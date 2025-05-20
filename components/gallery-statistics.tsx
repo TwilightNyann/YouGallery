@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { useLanguage } from "@/contexts/language-context"
 import { format } from "date-fns"
@@ -87,6 +87,37 @@ const mockGalleries = [
 export default function GalleryStatistics() {
   const { t } = useLanguage()
   const [searchTerm, setSearchTerm] = useState("")
+  const [galleryCoverPhotos, setGalleryCoverPhotos] = useState<{ [key: string]: string }>({})
+
+  // Add this useEffect to load cover photos
+  useEffect(() => {
+    // Load cover photos for each gallery
+    const coverPhotos: { [key: string]: string } = {}
+
+    mockGalleries.forEach((gallery) => {
+      const coverId = localStorage.getItem(`gallery-${gallery.id}-cover`)
+      if (coverId) {
+        // Find the photo URL in the gallery's photos
+        const storedPhotosByScene = localStorage.getItem(`gallery-${gallery.id}-photos`)
+        if (storedPhotosByScene) {
+          try {
+            const photosByScene = JSON.parse(storedPhotosByScene)
+            // Look through all scenes for the photo
+            Object.values(photosByScene).forEach((photos: any[]) => {
+              const coverPhoto = photos.find((photo) => photo.id.toString() === coverId)
+              if (coverPhoto) {
+                coverPhotos[gallery.id] = coverPhoto.url
+              }
+            })
+          } catch (e) {
+            console.error("Failed to parse stored photos", e)
+          }
+        }
+      }
+    })
+
+    setGalleryCoverPhotos(coverPhotos)
+  }, [])
 
   // Filter galleries based on search term
   const filteredGalleries = mockGalleries.filter((gallery) =>
@@ -95,10 +126,10 @@ export default function GalleryStatistics() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">{t("gallery.statistics")}</h2>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-0">
+        <h2 className="text-xl sm:text-2xl font-bold">{t("gallery.statistics")}</h2>
         <Input
-          className="max-w-xs"
+          className="w-full sm:max-w-xs"
           placeholder={t("gallery.search")}
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
@@ -116,58 +147,60 @@ export default function GalleryStatistics() {
               <CardContent className="p-0">
                 <div className="flex flex-col md:flex-row">
                   {/* Thumbnail */}
-                  <div className="w-full md:w-48 h-48 relative">
-                    <img
-                      src={gallery.thumbnail || "/placeholder.svg"}
-                      alt={gallery.title}
-                      className="w-full h-full object-cover"
-                    />
+                  <div className="w-full md:w-48 h-auto md:h-48 relative">
+                    <div className="relative aspect-[4/3] overflow-hidden rounded-lg md:rounded-none md:rounded-l-lg">
+                      <img
+                        src={galleryCoverPhotos[gallery.id] || gallery.thumbnail || "/placeholder.svg"}
+                        alt={gallery.title}
+                        className="object-cover w-full h-full transition-transform duration-300 group-hover:scale-105"
+                      />
+                    </div>
                   </div>
 
                   {/* Content */}
-                  <div className="p-6 flex-1">
+                  <div className="p-4 md:p-6 flex-1">
                     <div className="mb-4">
                       <h3 className="text-xl font-bold">{gallery.title}</h3>
                       <p className="text-gray-500 text-sm">{format(new Date(gallery.date), "MMMM d, yyyy")}</p>
                     </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
                       <div className="flex items-center">
-                        <div className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-100 mr-3">
-                          <ImageIcon className="h-5 w-5 text-blue-600" />
+                        <div className="flex items-center justify-center w-8 md:w-10 h-8 md:h-10 rounded-full bg-blue-100 mr-2 md:mr-3">
+                          <ImageIcon className="h-4 w-4 md:h-5 md:w-5 text-blue-600" />
                         </div>
                         <div>
-                          <p className="text-lg font-semibold">{gallery.photos}</p>
+                          <p className="text-base md:text-lg font-semibold">{gallery.photos}</p>
                           <p className="text-xs text-gray-500">{t("gallery.photos")}</p>
                         </div>
                       </div>
 
                       <div className="flex items-center">
-                        <div className="flex items-center justify-center w-10 h-10 rounded-full bg-amber-100 mr-3">
-                          <Upload className="h-5 w-5 text-amber-600" />
+                        <div className="flex items-center justify-center w-8 md:w-10 h-8 md:h-10 rounded-full bg-amber-100 mr-2 md:mr-3">
+                          <Upload className="h-4 w-4 md:h-5 md:w-5 text-amber-600" />
                         </div>
                         <div>
-                          <p className="text-lg font-semibold">{gallery.uploadedPhotos}</p>
+                          <p className="text-base md:text-lg font-semibold">{gallery.uploadedPhotos}</p>
                           <p className="text-xs text-gray-500">{t("gallery.uploadedPhotos")}</p>
                         </div>
                       </div>
 
                       <div className="flex items-center">
-                        <div className="flex items-center justify-center w-10 h-10 rounded-full bg-green-100 mr-3">
-                          <Eye className="h-5 w-5 text-green-600" />
+                        <div className="flex items-center justify-center w-8 md:w-10 h-8 md:h-10 rounded-full bg-green-100 mr-2 md:mr-3">
+                          <Eye className="h-4 w-4 md:h-5 md:w-5 text-green-600" />
                         </div>
                         <div>
-                          <p className="text-lg font-semibold">{gallery.views}</p>
+                          <p className="text-base md:text-lg font-semibold">{gallery.views}</p>
                           <p className="text-xs text-gray-500">{t("gallery.views")}</p>
                         </div>
                       </div>
 
                       <div className="flex items-center">
-                        <div className="flex items-center justify-center w-10 h-10 rounded-full bg-purple-100 mr-3">
-                          <HardDrive className="h-5 w-5 text-purple-600" />
+                        <div className="flex items-center justify-center w-8 md:w-10 h-8 md:h-10 rounded-full bg-purple-100 mr-2 md:mr-3">
+                          <HardDrive className="h-4 w-4 md:h-5 md:w-5 text-purple-600" />
                         </div>
                         <div>
-                          <p className="text-lg font-semibold">{formatFileSize(gallery.size)}</p>
+                          <p className="text-base md:text-lg font-semibold">{formatFileSize(gallery.size)}</p>
                           <p className="text-xs text-gray-500">{t("gallery.size")}</p>
                         </div>
                       </div>

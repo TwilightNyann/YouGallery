@@ -9,30 +9,36 @@ export default function PricePage() {
   const { t } = useLanguage()
 
   const basicFeatures = [
-    "Website optimization",
-    "Social media setup and management (1 platform)",
-    "Monthly progress report",
+    "Up to 10 galleries",
+    "Basic photo organization",
+    "Standard image quality",
     "Email support",
-    "Basic competitor analysis",
-    "Initial SEO audit",
+    "Mobile access",
+    "Scene management",
   ]
 
   const proFeatures = [
-    "Includes all from the Basic Plan",
-    "Social media setup and management (up to 5 platforms)",
-    "PPC ad campaign management",
-    "Email and phone support",
-    "On-page SEO improvements",
-    "Monthly content recommendations",
+    "Up to 50 galleries",
+    "Advanced photo organization",
+    "High image quality",
+    "Priority email support",
+    "Mobile access",
+    "Custom gallery themes",
+    "Password-protected galleries",
+    "Unlimited scenes",
   ]
 
   const eliteFeatures = [
-    "Includes all from the Pro Plan",
-    "Website design and development",
-    "Comprehensive SEO strategy",
-    "Social media setup and management (up to 5 platforms)",
-    "Content marketing strategy and implementation",
-    "In-depth analytics and reporting",
+    "Unlimited galleries",
+    "Professional photo organization",
+    "Original image quality",
+    "Priority support",
+    "Mobile access",
+    "Custom gallery themes",
+    "Password-protected galleries",
+    "Custom domain name",
+    "Analytics and insights",
+    "Collaborative editing",
   ]
 
   return (
@@ -43,9 +49,27 @@ export default function PricePage() {
         <p className="text-lg md:text-xl mb-8 md:mb-12">{t("price.subtitle")}</p>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
-          <PricingCard title={t("price.basic")} price="$500" features={basicFeatures} popular={false} />
-          <PricingCard title={t("price.pro")} price="$1000" features={proFeatures} popular={true} />
-          <PricingCard title={t("price.elite")} price="$2000" features={eliteFeatures} popular={false} />
+          <PricingCard
+            title={t("price.basic")}
+            price="$10"
+            storage="100GB storage"
+            features={basicFeatures}
+            popular={false}
+          />
+          <PricingCard
+            title={t("price.pro")}
+            price="$20"
+            storage="500GB storage"
+            features={proFeatures}
+            popular={true}
+          />
+          <PricingCard
+            title={t("price.elite")}
+            price="$50"
+            storage="1TB storage"
+            features={eliteFeatures}
+            popular={false}
+          />
         </div>
       </div>
       <Footer />

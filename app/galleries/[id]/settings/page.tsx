@@ -8,12 +8,37 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { toast } from "sonner"
 
 export default function GallerySettingsPage({ params }: { params: { id: string } }) {
   const { t } = useLanguage()
-  const [galleryName, setGalleryName] = useState("Sample Gallery")
-  const [shootingDate, setShootingDate] = useState("2024-05-11")
+  const [galleryName, setGalleryName] = useState("New Gallery")
+  const [shootingDate, setShootingDate] = useState("2024-03-05")
   const [isPublic, setIsPublic] = useState(false)
+
+  // Add password protection state
+  const [isPasswordProtected, setIsPasswordProtected] = useState(false)
+  const [password, setPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
+  const [passwordError, setPasswordError] = useState("")
+
+  // Load gallery details from localStorage if available
+  useEffect(() => {
+    const storedName = localStorage.getItem(`gallery-${params.id}-name`)
+    const storedDate = localStorage.getItem(`gallery-${params.id}-date`)
+
+    if (storedName) setGalleryName(storedName)
+    if (storedDate) setShootingDate(storedDate)
+  }, [params.id])
+
+  // Add this after the existing useEffect
+  useEffect(() => {
+    // Load password protection settings from localStorage
+    const storedPasswordProtection = localStorage.getItem(`gallery-${params.id}-password-protected`)
+    if (storedPasswordProtection) {
+      setIsPasswordProtected(storedPasswordProtection === "true")
+    }
+  }, [params.id])
 
   // Prevent body scrolling
   useEffect(() => {
@@ -23,9 +48,57 @@ export default function GallerySettingsPage({ params }: { params: { id: string }
     }
   }, [])
 
+  // Update the handleSave function to include password protection
   const handleSave = () => {
+    // Save gallery name and date to localStorage
+    localStorage.setItem(`gallery-${params.id}-name`, galleryName)
+    localStorage.setItem(`gallery-${params.id}-date`, shootingDate)
+
     // In a real app, you would save the settings to the backend
     console.log("Saving settings:", { galleryName, shootingDate, isPublic })
+  }
+
+  // Add a function to handle password saving
+  const handleSavePassword = () => {
+    // Reset error
+    setPasswordError("")
+
+    // Validate password
+    if (isPasswordProtected) {
+      if (!password) {
+        setPasswordError(t("gallery.passwordRequired"))
+        return
+      }
+
+      if (password !== confirmPassword) {
+        setPasswordError(t("gallery.passwordMismatch"))
+        return
+      }
+    }
+
+    // Save password protection settings
+    localStorage.setItem(`gallery-${params.id}-password-protected`, isPasswordProtected.toString())
+
+    if (isPasswordProtected && password) {
+      // In a real app, you would hash the password before storing it
+      localStorage.setItem(`gallery-${params.id}-password`, password)
+    } else {
+      // Remove password if protection is disabled
+      localStorage.removeItem(`gallery-${params.id}-password`)
+    }
+
+    toast({
+      title: t("gallery.settingsSaved"),
+      description: t("gallery.passwordSettingsUpdated"),
+    })
+  }
+
+  const handleGalleryNameChange = (name: string) => {
+    setGalleryName(name)
+  }
+
+  const handleShootingDateChange = (date: string) => {
+    setShootingDate(date)
   }
 
   return (
@@ -37,6 +110,8 @@ export default function GallerySettingsPage({ params }: { params: { id: string }
           galleryName={galleryName}
           shootingDate={shootingDate}
           currentView="settings"
+          onGalleryNameChange={handleGalleryNameChange}
+          onShootingDateChange={handleShootingDateChange}
         />
 
         <main className="flex-1 overflow-y-auto">
@@ -95,6 +170,60 @@ export default function GallerySettingsPage({ params }: { params: { id: string }
                 <CardFooter>
                   <Button onClick={handleSave} className="bg-[#B9FF66] text-black hover:bg-[#a8eb55]">
                     {t("gallery.save")}
+                  </Button>
+                </CardFooter>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>{t("gallery.passwordProtection")}</CardTitle>
+                  <CardDescription>{t("gallery.passwordProtectionDescription")}</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id="is-password-protected"
+                      checked={isPasswordProtected}
+                      onChange={(e) => setIsPasswordProtected(e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 text-[#B9FF66] focus:ring-[#B9FF66]"
+                    />
+                    <Label htmlFor="is-password-protected" className="text-sm font-medium leading-none cursor-pointer">
+                      {t("gallery.enablePasswordProtection")}
+                    </Label>
+                  </div>
+
+                  {isPasswordProtected && (
+                    <div className="space-y-4 mt-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="gallery-password">{t("gallery.password")}</Label>
+                        <Input
+                          id="gallery-password"
+                          type="password"
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          placeholder={t("gallery.enterPassword")}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="confirm-password">{t("gallery.confirmPassword")}</Label>
+                        <Input
+                          id="confirm-password"
+                          type="password"
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          placeholder={t("gallery.confirmPasswordPlaceholder")}
+                        />
+                      </div>
+
+                      {passwordError && <p className="text-red-500 text-sm">{passwordError}</p>}
+                    </div>
+                  )}
+                </CardContent>
+                <CardFooter>
+                  <Button onClick={handleSavePassword} className="bg-[#B9FF66] text-black hover:bg-[#a8eb55]">
+                    {t("gallery.savePassword")}
                   </Button>
                 </CardFooter>
               </Card>

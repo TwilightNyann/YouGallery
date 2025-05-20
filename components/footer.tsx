@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Facebook, Linkedin, Twitter } from "lucide-react"
+import { Instagram, Linkedin, Facebook } from "lucide-react"
 import { useLanguage } from "@/contexts/language-context"
 
 export default function Footer() {
@@ -35,14 +35,14 @@ export default function Footer() {
             </nav>
 
             <div className="flex space-x-6 md:hidden">
+              <Link href="#" aria-label="Instagram">
+                <Instagram className="h-6 w-6" />
+              </Link>
               <Link href="#" aria-label="LinkedIn">
                 <Linkedin className="h-6 w-6" />
               </Link>
               <Link href="#" aria-label="Facebook">
                 <Facebook className="h-6 w-6" />
-              </Link>
-              <Link href="#" aria-label="Twitter">
-                <Twitter className="h-6 w-6" />
               </Link>
             </div>
           </div>
@@ -57,14 +57,14 @@ export default function Footer() {
           </div>
 
           <div className="hidden md:flex space-x-6">
+            <Link href="#" aria-label="Instagram">
+              <Instagram className="h-6 w-6" />
+            </Link>
             <Link href="#" aria-label="LinkedIn">
               <Linkedin className="h-6 w-6" />
             </Link>
             <Link href="#" aria-label="Facebook">
               <Facebook className="h-6 w-6" />
-            </Link>
-            <Link href="#" aria-label="Twitter">
-              <Twitter className="h-6 w-6" />
             </Link>
           </div>
         </div>
@@ -100,9 +100,6 @@ export default function Footer() {
           <div className="flex items-center space-x-4">
             <Link href="/privacy-policy" className="text-sm text-gray-400 hover:text-white">
               {t("footer.privacy")}
-            </Link>
-            <Link href="/404-test" className="text-sm text-gray-400 hover:text-white">
-              404 Example
             </Link>
           </div>
         </div>

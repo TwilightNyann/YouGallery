@@ -49,7 +49,8 @@ export default function GalleryGrid() {
 
   return (
     <div>
-      <div className="flex justify-end mb-6">
+      <div className="flex justify-between sm:justify-end items-center mb-4 sm:mb-6">
+        <h2 className="text-lg font-medium sm:hidden">{t("gallery.galleries")}</h2>
         <Select value={sortBy} onValueChange={setSortBy}>
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder={t("gallery.sortBy")} />
@@ -62,7 +63,7 @@ export default function GalleryGrid() {
         </Select>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
         {sortedGalleries.map((gallery) => (
           <GalleryCard
             key={gallery.id}

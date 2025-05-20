@@ -14,6 +14,9 @@ export default function GalleryFavoritesPage({ params }: { params: { id: string 
   const { t } = useLanguage()
   const { toast } = useToast()
 
+  const [galleryName, setGalleryName] = useState("New Gallery")
+  const [shootingDate, setShootingDate] = useState("2024-03-05")
+
   // Prevent body scrolling
   useEffect(() => {
     document.body.style.overflow = "hidden"
@@ -58,6 +61,24 @@ export default function GalleryFavoritesPage({ params }: { params: { id: string 
       window.removeEventListener("storage", loadFavorites)
     }
   }, [params.id])
+
+  useEffect(() => {
+    const storedName = localStorage.getItem(`gallery-${params.id}-name`)
+    const storedDate = localStorage.getItem(`gallery-${params.id}-date`)
+
+    if (storedName) setGalleryName(storedName)
+    if (storedDate) setShootingDate(storedDate)
+  }, [params.id])
+
+  const handleGalleryNameChange = (name: string) => {
+    setGalleryName(name)
+    localStorage.setItem(`gallery-${params.id}-name`, name)
+  }
+
+  const handleShootingDateChange = (date: string) => {
+    setShootingDate(date)
+    localStorage.setItem(`gallery-${params.id}-date`, date)
+  }
 
   const handleFavoriteToggle = (photoId: number) => {
     // Get the current photos by scene
@@ -118,8 +139,8 @@ export default function GalleryFavoritesPage({ params }: { params: { id: string 
   }
 
   // In a real app, you would fetch the gallery details
-  const galleryName = localStorage.getItem(`gallery-${params.id}-name`) || "Sample Gallery"
-  const shootingDate = localStorage.getItem(`gallery-${params.id}-date`) || "2024-05-11"
+  // const galleryName = localStorage.getItem(`gallery-${params.id}-name`) || "Sample Gallery"
+  // const shootingDate = localStorage.getItem(`gallery-${params.id}-date`) || "2024-05-11"
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
@@ -130,6 +151,8 @@ export default function GalleryFavoritesPage({ params }: { params: { id: string 
           galleryName={galleryName}
           shootingDate={shootingDate}
           currentView="favorites"
+          onGalleryNameChange={handleGalleryNameChange}
+          onShootingDateChange={handleShootingDateChange}
         />
 
         <main className="flex-1 overflow-y-auto">

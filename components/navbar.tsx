@@ -60,7 +60,7 @@ export default function Navbar() {
 
             {!isAuthenticated ? (
               <>
-                <Link href="/login" className="text-gray-700 hover:text-black bg-[#B9FF66] px-4 py-2 rounded-full">
+                <Link href="/login" className="text-gray-700 hover:text-black">
                   {t("nav.login")}
                 </Link>
                 <Link href="/register" className="text-gray-700 hover:text-black">
@@ -203,22 +203,6 @@ export default function Navbar() {
                 >
                   {t("nav.myGallery")}
                 </Link>
-                <Link
-                  href="/settings"
-                  className="py-3 border-b border-gray-100 text-gray-700 hover:text-black"
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  {t("nav.settings")}
-                </Link>
-                <button
-                  className="py-3 border-b border-gray-100 text-red-600 hover:text-red-700 text-left"
-                  onClick={() => {
-                    logout()
-                    setIsMenuOpen(false)
-                  }}
-                >
-                  {t("nav.logout")}
-                </button>
               </>
             )}
           </nav>

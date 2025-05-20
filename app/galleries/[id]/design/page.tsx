@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import Navbar from "@/components/navbar"
 import GallerySidebar from "@/components/gallery-sidebar"
 import { useLanguage } from "@/contexts/language-context"
@@ -8,6 +8,17 @@ import { Paintbrush } from "lucide-react"
 
 export default function GalleryDesignPage({ params }: { params: { id: string } }) {
   const { t } = useLanguage()
+  const [galleryName, setGalleryName] = useState("New Gallery")
+  const [shootingDate, setShootingDate] = useState("2024-03-05")
+
+  // Load gallery details from localStorage if available
+  useEffect(() => {
+    const storedName = localStorage.getItem(`gallery-${params.id}-name`)
+    const storedDate = localStorage.getItem(`gallery-${params.id}-date`)
+
+    if (storedName) setGalleryName(storedName)
+    if (storedDate) setShootingDate(storedDate)
+  }, [params.id])
 
   // Prevent body scrolling
   useEffect(() => {
@@ -17,9 +28,15 @@ export default function GalleryDesignPage({ params }: { params: { id: string } }
     }
   }, [])
 
-  // In a real app, you would fetch the gallery details
-  const galleryName = "Sample Gallery"
-  const shootingDate = "2024-05-11"
+  const handleGalleryNameChange = (name: string) => {
+    setGalleryName(name)
+    localStorage.setItem(`gallery-${params.id}-name`, name)
+  }
+
+  const handleShootingDateChange = (date: string) => {
+    setShootingDate(date)
+    localStorage.setItem(`gallery-${params.id}-date`, date)
+  }
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
@@ -30,6 +47,8 @@ export default function GalleryDesignPage({ params }: { params: { id: string } }
           galleryName={galleryName}
           shootingDate={shootingDate}
           currentView="design"
+          onGalleryNameChange={handleGalleryNameChange}
+          onShootingDateChange={handleShootingDateChange}
         />
 
         <main className="flex-1 overflow-y-auto">

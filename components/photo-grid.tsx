@@ -1,9 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import type React from "react"
+
+import { useState, useEffect } from "react"
 import Image from "next/image"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
-import { Heart, Trash2, MoreVertical, Eye } from "lucide-react"
+import { Heart, Trash2, MoreVertical, Eye, ImageIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useLanguage } from "@/contexts/language-context"
 import { SimpleModal } from "@/components/simple-modal"
@@ -22,6 +24,8 @@ interface PhotoGridProps {
   showNames?: boolean
   onFavoriteToggle?: (photoId: number) => void
   onDeletePhoto?: (photoId: number) => void
+  onSetAsCover?: (photoId: number) => void
+  galleryId?: string
 }
 
 export default function PhotoGrid({
@@ -30,10 +34,15 @@ export default function PhotoGrid({
   showNames = false,
   onFavoriteToggle = () => {},
   onDeletePhoto = () => {},
+  onSetAsCover = () => {},
+  galleryId,
 }: PhotoGridProps) {
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null)
   const [photoToDelete, setPhotoToDelete] = useState<Photo | null>(null)
   const { t } = useLanguage()
+
+  const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null)
+  const [rightClickedPhoto, setRightClickedPhoto] = useState<Photo | null>(null)
 
   const sortedPhotos = [...photos].sort((a, b) => {
     if (sortBy === "newest") {
@@ -60,14 +69,41 @@ export default function PhotoGrid({
     }
   }
 
+  const handleContextMenu = (e: React.MouseEvent, photo: Photo) => {
+    e.preventDefault() // Prevent default browser context menu
+    setRightClickedPhoto(photo)
+    setContextMenuPosition({ x: e.clientX, y: e.clientY })
+  }
+
+  // Close context menu when clicking elsewhere
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setContextMenuPosition(null)
+    }
+
+    document.addEventListener("click", handleClickOutside)
+    return () => {
+      document.removeEventListener("click", handleClickOutside)
+    }
+  }, [])
+
+  const handleSetAsCover = (photo: Photo) => {
+    if (galleryId) {
+      // Store the cover photo ID in localStorage
+      localStorage.setItem(`gallery-${galleryId}-cover`, photo.id.toString())
+      onSetAsCover(photo.id)
+    }
+  }
+
   return (
     <>
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
         {sortedPhotos.map((photo) => (
           <div
             key={photo.id}
             className="relative aspect-[4/3] rounded-lg overflow-hidden group"
             onClick={() => setSelectedPhoto(photo)}
+            onContextMenu={(e) => handleContextMenu(e, photo)}
           >
             <Image
               src={photo.url || "/placeholder.svg"}
@@ -111,6 +147,15 @@ export default function PhotoGrid({
                   <DropdownMenuItem
                     onClick={(e) => {
                       e.stopPropagation()
+                      handleSetAsCover(photo)
+                    }}
+                  >
+                    <ImageIcon className="mr-2 h-4 w-4" />
+                    {t("gallery.setAsCover")}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.stopPropagation()
                       handleDeleteClick(photo)
                     }}
                     className="text-red-600 focus:text-red-600"
@@ -141,7 +186,7 @@ export default function PhotoGrid({
 
       {/* Photo detail dialog */}
       <Dialog open={!!selectedPhoto} onOpenChange={() => setSelectedPhoto(null)}>
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="max-w-[95vw] sm:max-w-2xl md:max-w-3xl lg:max-w-4xl p-0 sm:p-6">
           {selectedPhoto && (
             <div className="relative aspect-[4/3]">
               <Image
@@ -179,6 +224,59 @@ export default function PhotoGrid({
           </div>
         </div>
       </SimpleModal>
+
+      {/* Context Menu */}
+      {contextMenuPosition && rightClickedPhoto && (
+        <div
+          className="fixed z-50 bg-white rounded-md shadow-md py-1 border border-gray-200 w-48"
+          style={{
+            top: `${Math.min(contextMenuPosition.y, window.innerHeight - 200)}px`,
+            left: `${Math.min(contextMenuPosition.x, window.innerWidth - 150)}px`,
+            transform: "translate(-50%, -50%)",
+          }}
+        >
+          <button
+            className="w-full text-left px-3 py-2 text-sm flex items-center hover:bg-gray-100"
+            onClick={() => {
+              setSelectedPhoto(rightClickedPhoto)
+              setContextMenuPosition(null)
+            }}
+          >
+            <Eye className="mr-2 h-4 w-4" />
+            {t("gallery.viewPhoto")}
+          </button>
+          <button
+            className="w-full text-left px-3 py-2 text-sm flex items-center hover:bg-gray-100"
+            onClick={() => {
+              handleFavoriteToggle(rightClickedPhoto)
+              setContextMenuPosition(null)
+            }}
+          >
+            <Heart className={`mr-2 h-4 w-4 ${rightClickedPhoto.isFavorite ? "fill-[#B9FF66]" : ""}`} />
+            {rightClickedPhoto.isFavorite ? t("gallery.removeFromFavorites") : t("gallery.addToFavorites")}
+          </button>
+          <button
+            className="w-full text-left px-3 py-2 text-sm flex items-center hover:bg-gray-100"
+            onClick={() => {
+              handleSetAsCover(rightClickedPhoto)
+              setContextMenuPosition(null)
+            }}
+          >
+            <ImageIcon className="mr-2 h-4 w-4" />
+            {t("gallery.setAsCover")}
+          </button>
+          <button
+            className="w-full text-left px-3 py-2 text-sm flex items-center hover:bg-gray-100 text-red-600"
+            onClick={() => {
+              handleDeleteClick(rightClickedPhoto)
+              setContextMenuPosition(null)
+            }}
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            {t("gallery.deletePhoto")}
+          </button>
+        </div>
+      )}
     </>
   )
 }
