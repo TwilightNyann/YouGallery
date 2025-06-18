@@ -14,9 +14,19 @@ import { useLanguage } from "@/contexts/language-context"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { AlertCircle } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { toast } from "sonner"
 
 export default function SettingsPage() {
-  const { user, isAuthenticated, updateProfile, updatePassword } = useAuth()
+  const { user, isAuthenticated, updateProfile, updatePassword, deleteAccount, isLoading: authIsLoading } = useAuth()
   const { t } = useLanguage()
   const router = useRouter()
 
@@ -32,17 +42,21 @@ export default function SettingsPage() {
     confirmPassword: "",
   })
 
-  const [isLoading, setIsLoading] = useState(false)
+  const [isSubmittingProfile, setIsSubmittingProfile] = useState(false)
+  const [isSubmittingPassword, setIsSubmittingPassword] = useState(false)
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false)
+
   const [passwordError, setPasswordError] = useState("")
   const [profileSuccess, setProfileSuccess] = useState(false)
   const [passwordSuccess, setPasswordSuccess] = useState(false)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 
   // Redirect if not authenticated
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!authIsLoading && !isAuthenticated) {
       router.push("/login")
     }
-  }, [isAuthenticated, router])
+  }, [authIsLoading, isAuthenticated, router])
 
   // Set initial form data
   useEffect(() => {
@@ -70,27 +84,36 @@ export default function SettingsPage() {
 
   const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setIsLoading(true)
+    setIsSubmittingProfile(true)
+    setProfileSuccess(false)
 
     try {
       await updateProfile(formData)
       setProfileSuccess(true)
+      toast.success(t("profile.profileUpdateSuccess"))
     } catch (error) {
       console.error("Failed to update profile:", error)
+      toast.error(t("profile.profileUpdateError"))
     } finally {
-      setIsLoading(false)
+      setIsSubmittingProfile(false)
     }
   }
 
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setPasswordError("")
+    setPasswordSuccess(false)
 
     if (passwordData.newPassword !== passwordData.confirmPassword) {
-      setPasswordError("Passwords don't match")
+      setPasswordError(t("profile.passwordsDontMatch"))
+      return
+    }
+    if (!passwordData.currentPassword || !passwordData.newPassword) {
+      setPasswordError(t("profile.fillAllFields"))
       return
     }
 
-    setIsLoading(true)
+    setIsSubmittingPassword(true)
 
     try {
       await updatePassword(passwordData.currentPassword, passwordData.newPassword)
@@ -100,16 +123,37 @@ export default function SettingsPage() {
         newPassword: "",
         confirmPassword: "",
       })
-    } catch (error) {
+      toast.success(t("profile.passwordUpdateSuccess"))
+    } catch (error: any) {
       console.error("Failed to update password:", error)
-      setPasswordError("Failed to update password")
+      setPasswordError(error.message || t("profile.passwordUpdateError"))
+      toast.error(error.message || t("profile.passwordUpdateError"))
     } finally {
-      setIsLoading(false)
+      setIsSubmittingPassword(false)
     }
   }
 
-  if (!user) {
-    return null // Or a loading state
+  const handleDeleteAccount = async () => {
+    setIsDeletingAccount(true)
+    try {
+      await deleteAccount()
+      toast.success(t("profile.accountDeleteSuccess"))
+      // Redirect happens in the auth context
+    } catch (error) {
+      console.error("Failed to delete account:", error)
+      toast.error(t("profile.accountDeleteError"))
+    } finally {
+      setIsDeletingAccount(false)
+      setDeleteDialogOpen(false)
+    }
+  }
+
+  if (authIsLoading || !user) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="loader">Loading...</div> {/* Replace with a proper spinner/loader component */}
+      </div>
+    )
   }
 
   return (
@@ -122,7 +166,7 @@ export default function SettingsPage() {
           <Card>
             <CardHeader>
               <CardTitle>{t("profile.personalInfo")}</CardTitle>
-              <CardDescription>Update your personal information</CardDescription>
+              <CardDescription>{t("profile.personalInfoDescription")}</CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleProfileSubmit} className="space-y-4">
@@ -138,19 +182,26 @@ export default function SettingsPage() {
                     name="email"
                     type="email"
                     value={formData.email}
-                    onChange={handleProfileChange}
-                    required
+                    readOnly // Email is usually not editable or requires verification
+                    className="bg-gray-100 cursor-not-allowed"
                   />
+                  <p className="text-xs text-gray-500">{t("profile.emailChangeNote")}</p>
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="phone">{t("profile.phone")}</Label>
-                  <Input id="phone" name="phone" type="tel" value={formData.phone} onChange={handleProfileChange} />
+                  <Input
+                    id="phone"
+                    name="phone"
+                    type="tel"
+                    value={formData.phone || ""}
+                    onChange={handleProfileChange}
+                  />
                 </div>
 
                 {profileSuccess && (
                   <Alert className="bg-green-50 border-green-200 text-green-800">
-                    <AlertDescription>Your profile has been updated successfully.</AlertDescription>
+                    <AlertDescription>{t("profile.profileUpdateSuccess")}</AlertDescription>
                   </Alert>
                 )}
               </form>
@@ -159,10 +210,10 @@ export default function SettingsPage() {
               <Button
                 type="submit"
                 onClick={handleProfileSubmit}
-                disabled={isLoading}
+                disabled={isSubmittingProfile}
                 className="bg-[#B9FF66] text-black hover:bg-[#a8eb55]"
               >
-                {isLoading ? "Saving..." : t("profile.save")}
+                {isSubmittingProfile ? t("profile.saving") : t("profile.save")}
               </Button>
             </CardFooter>
           </Card>
@@ -170,7 +221,7 @@ export default function SettingsPage() {
           <Card>
             <CardHeader>
               <CardTitle>{t("profile.password")}</CardTitle>
-              <CardDescription>Update your password</CardDescription>
+              <CardDescription>{t("profile.passwordDescription")}</CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handlePasswordSubmit} className="space-y-4">
@@ -219,7 +270,7 @@ export default function SettingsPage() {
 
                 {passwordSuccess && (
                   <Alert className="bg-green-50 border-green-200 text-green-800">
-                    <AlertDescription>Your password has been updated successfully.</AlertDescription>
+                    <AlertDescription>{t("profile.passwordUpdateSuccess")}</AlertDescription>
                   </Alert>
                 )}
               </form>
@@ -228,10 +279,10 @@ export default function SettingsPage() {
               <Button
                 type="submit"
                 onClick={handlePasswordSubmit}
-                disabled={isLoading}
+                disabled={isSubmittingPassword}
                 className="bg-[#B9FF66] text-black hover:bg-[#a8eb55]"
               >
-                {isLoading ? "Updating..." : t("profile.updatePassword")}
+                {isSubmittingPassword ? t("profile.updating") : t("profile.updatePassword")}
               </Button>
             </CardFooter>
           </Card>
@@ -242,7 +293,25 @@ export default function SettingsPage() {
               <CardDescription>{t("profile.deleteWarning")}</CardDescription>
             </CardHeader>
             <CardFooter>
-              <Button variant="destructive">{t("profile.deleteButton")}</Button>
+              <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="destructive">{t("profile.deleteButton")}</Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>{t("profile.confirmDeleteTitle")}</DialogTitle>
+                    <DialogDescription>{t("profile.confirmDeleteDescription")}</DialogDescription>
+                  </DialogHeader>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={isDeletingAccount}>
+                      {t("profile.cancel")}
+                    </Button>
+                    <Button variant="destructive" onClick={handleDeleteAccount} disabled={isDeletingAccount}>
+                      {isDeletingAccount ? t("profile.deleting") : t("profile.deleteButtonConfirm")}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </CardFooter>
           </Card>
         </div>

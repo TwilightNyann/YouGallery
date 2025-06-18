@@ -9,36 +9,36 @@ export default function PricePage() {
   const { t } = useLanguage()
 
   const basicFeatures = [
-    "Up to 10 galleries",
-    "Basic photo organization",
-    "Standard image quality",
-    "Email support",
-    "Mobile access",
-    "Scene management",
+    t("pricing.basic.features.galleries"),
+    t("pricing.basic.features.organization"),
+    t("pricing.basic.features.quality"),
+    t("pricing.basic.features.support"),
+    t("pricing.basic.features.mobile"),
+    t("pricing.basic.features.scenes"),
   ]
 
   const proFeatures = [
-    "Up to 50 galleries",
-    "Advanced photo organization",
-    "High image quality",
-    "Priority email support",
-    "Mobile access",
-    "Custom gallery themes",
-    "Password-protected galleries",
-    "Unlimited scenes",
+    t("pricing.pro.features.galleries"),
+    t("pricing.pro.features.organization"),
+    t("pricing.pro.features.quality"),
+    t("pricing.pro.features.support"),
+    t("pricing.pro.features.mobile"),
+    t("pricing.pro.features.themes"),
+    t("pricing.pro.features.password"),
+    t("pricing.pro.features.scenes"),
   ]
 
   const eliteFeatures = [
-    "Unlimited galleries",
-    "Professional photo organization",
-    "Original image quality",
-    "Priority support",
-    "Mobile access",
-    "Custom gallery themes",
-    "Password-protected galleries",
-    "Custom domain name",
-    "Analytics and insights",
-    "Collaborative editing",
+    t("pricing.elite.features.galleries"),
+    t("pricing.elite.features.organization"),
+    t("pricing.elite.features.quality"),
+    t("pricing.elite.features.support"),
+    t("pricing.elite.features.mobile"),
+    t("pricing.elite.features.themes"),
+    t("pricing.elite.features.password"),
+    t("pricing.elite.features.domain"),
+    t("pricing.elite.features.analytics"),
+    t("pricing.elite.features.collaboration"),
   ]
 
   return (
