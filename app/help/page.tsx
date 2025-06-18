@@ -23,20 +23,21 @@ export default function HelpPage() {
             <h2 className="text-2xl font-bold mb-4">{t("help.contact.title")}</h2>
             <div className="space-y-4 mb-6">
               <p>
-                <strong>{t("help.contact.email")}</strong> support@yougallery.com
+                <strong>{t("help.contact.email")}</strong> {t("help.contact.emailValue")}
               </p>
               <p>
-                <strong>{t("help.contact.phone")}</strong> 555-567-8901
+                <strong>{t("help.contact.phone")}</strong> {t("help.contact.phoneValue")}
               </p>
               <p>
-                <strong>{t("help.contact.hours")}</strong> Monday - Friday, 9am - 5pm EST
+                <strong>{t("help.contact.hours")}</strong> {t("help.contact.hoursValue")}
               </p>
               <p>
                 <strong>{t("help.contact.address")}</strong>
                 <br />
-                1234 Gallery St,
-                <br />
-                Photo City, Image State 12345
+                {t("help.contact.addressValue")}
+              </p>
+              <p>
+                <strong>{t("help.contact.author")}</strong> {t("help.contact.name")}
               </p>
             </div>
           </div>

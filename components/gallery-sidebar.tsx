@@ -23,11 +23,15 @@ import {
 import { useLanguage } from "@/contexts/language-context"
 import { SimpleModal } from "@/components/simple-modal"
 import { format } from "date-fns"
-import { toast } from "sonner"
+import { useToast } from "@/hooks/use-toast"
+import apiClient from "@/lib/api"
 
 interface Scene {
-  id: string
+  id: number
   name: string
+  order_index: number
+  gallery_id: number
+  photo_count?: number
 }
 
 interface GallerySidebarProps {
@@ -53,10 +57,9 @@ export default function GallerySidebar({
   onShootingDateChange = () => {},
   onViewChange = () => {},
 }: GallerySidebarProps) {
-  // Start with only one scene by default
-  const [scenes, setScenes] = useState<Scene[]>([{ id: "1", name: "New Scene" }])
+  const [scenes, setScenes] = useState<Scene[]>([])
   const [expandedScenes, setExpandedScenes] = useState(true)
-  const [editingSceneId, setEditingSceneId] = useState<string | null>(null)
+  const [editingSceneId, setEditingSceneId] = useState<number | null>(null)
   const [newSceneName, setNewSceneName] = useState("")
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -64,9 +67,11 @@ export default function GallerySidebar({
   const [editedGalleryName, setEditedGalleryName] = useState(galleryName)
   const [editedShootingDate, setEditedShootingDate] = useState(shootingDate)
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
-  const [sceneToDelete, setSceneToDelete] = useState<string | null>(null)
+  const [sceneToDelete, setSceneToDelete] = useState<number | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
   const editInputRef = useRef<HTMLInputElement>(null)
   const { t } = useLanguage()
+  const { toast } = useToast()
   const router = useRouter()
 
   // Update local state when props change
@@ -87,224 +92,143 @@ export default function GallerySidebar({
     }
   }, [editingSceneId])
 
-  // Load scenes from localStorage when component mounts
+  // Load scenes from API when component mounts
   useEffect(() => {
-    loadScenes()
+    if (galleryId) {
+      loadScenes()
+    }
   }, [galleryId])
 
-  // Function to load scenes from localStorage
-  const loadScenes = () => {
-    // Check if scenes were intentionally deleted
-    const allScenesDeleted = localStorage.getItem(`gallery-${galleryId}-all-scenes-deleted`) === "true"
+  const loadScenes = async () => {
+    try {
+      setIsLoading(true)
+      const scenesData = await apiClient.getScenes(Number.parseInt(galleryId))
+      console.log("Loaded scenes for gallery", galleryId, ":", scenesData)
+      setScenes(scenesData)
 
-    // Initialize with default scene if no scenes exist AND scenes weren't intentionally deleted
-    const storedScenes = localStorage.getItem(`gallery-${galleryId}-scenes`)
-
-    if (!storedScenes || JSON.parse(storedScenes).length === 0) {
-      if (!allScenesDeleted) {
-        // Only create a default scene if this is a new gallery (not one where all scenes were deleted)
-        const defaultScene = { id: "1", name: "New Scene" }
-        const initialScenes = [defaultScene]
-
-        // Save to localStorage and state
-        localStorage.setItem(`gallery-${galleryId}-scenes`, JSON.stringify(initialScenes))
-        setScenes(initialScenes)
-
-        // Select the default scene if we're in gallery view
-        if (currentView === "gallery" && (!selectedSceneId || selectedSceneId === "")) {
-          onSceneSelect(defaultScene.id)
-        }
-      } else {
-        // If all scenes were intentionally deleted, keep the scenes array empty
-        setScenes([])
+      // If no scene is selected and we have scenes, select the first one
+      if (!selectedSceneId && scenesData.length > 0 && currentView === "gallery") {
+        onSceneSelect(scenesData[0].id.toString())
       }
-    } else {
-      try {
-        const parsedScenes = JSON.parse(storedScenes)
-        setScenes(parsedScenes)
-
-        // If no scene is selected yet, select the first one
-        if (currentView === "gallery" && (!selectedSceneId || selectedSceneId === "")) {
-          onSceneSelect(parsedScenes[0].id)
-        }
-      } catch (e) {
-        console.error("Failed to parse stored scenes", e)
-      }
-    }
-  }
-
-  const handleAddScene = () => {
-    // Clear the "all scenes deleted" flag when a new scene is added
-    localStorage.removeItem(`gallery-${galleryId}-all-scenes-deleted`)
-
-    // Dispatch an event to notify other components that scenes are now available
-    if (typeof window !== "undefined") {
-      const event = new CustomEvent("scenesAvailable", {
-        detail: { galleryId },
+    } catch (error) {
+      console.error("Error loading scenes:", error)
+      toast({
+        title: "Error",
+        description: "Failed to load scenes",
+        variant: "destructive",
       })
-      window.dispatchEvent(event)
-
-      // Also dispatch a custom event for scene added
-      const sceneAddedEvent = new CustomEvent("sceneAdded")
-      window.dispatchEvent(sceneAddedEvent)
+    } finally {
+      setIsLoading(false)
     }
-
-    const newScene = {
-      id: `scene-${Date.now()}`,
-      name: "New Scene",
-    }
-
-    // Update local state
-    const updatedScenes = [...scenes, newScene]
-    setScenes(updatedScenes)
-
-    // Store scenes in localStorage to persist across page navigation
-    localStorage.setItem(`gallery-${galleryId}-scenes`, JSON.stringify(updatedScenes))
-
-    // Don't automatically navigate to the new scene
-    toast({
-      title: t("gallery.sceneAdded"),
-      description: t("gallery.sceneAddedDescription"),
-    })
   }
 
-  const handleDeleteClick = (sceneId: string, e: React.MouseEvent) => {
-    e.stopPropagation() // Prevent scene selection when deleting
-    e.preventDefault() // Add this to ensure the event doesn't bubble up
+  const handleAddScene = async () => {
+    try {
+      const newScene = await apiClient.createScene(Number.parseInt(galleryId), {
+        name: `Scene ${scenes.length + 1}`,
+      })
+      console.log("Created new scene:", newScene)
+      await loadScenes() // Reload scenes
+      onSceneSelect(newScene.id.toString()) // Select the new scene
+      toast({
+        title: "Success",
+        description: "Scene created successfully!",
+      })
+    } catch (error) {
+      console.error("Error creating scene:", error)
+      toast({
+        title: "Error",
+        description: "Failed to create scene",
+        variant: "destructive",
+      })
+    }
+  }
 
+  const handleDeleteClick = (sceneId: number, e: React.MouseEvent) => {
+    e.stopPropagation()
+    e.preventDefault()
     console.log("Delete clicked for scene:", sceneId)
     setSceneToDelete(sceneId)
     setIsDeleteModalOpen(true)
   }
 
-  // Update the handleDeleteScene function to properly handle deleting the active scene
-  const handleDeleteScene = () => {
+  const handleDeleteScene = async () => {
     if (!sceneToDelete) return
 
-    console.log("Deleting scene with ID:", sceneToDelete)
+    try {
+      await apiClient.deleteScene(sceneToDelete)
+      await loadScenes()
 
-    // Get the current scenes from localStorage to ensure we're working with the latest data
-    const storedScenes = localStorage.getItem(`gallery-${galleryId}-scenes`)
-    let currentScenes = []
-
-    if (storedScenes) {
-      try {
-        currentScenes = JSON.parse(storedScenes)
-      } catch (e) {
-        console.error("Failed to parse stored scenes", e)
-        currentScenes = [...scenes] // Fallback to current state
-      }
-    } else {
-      currentScenes = [...scenes] // Fallback to current state
-    }
-
-    // Filter out the scene with the specified ID
-    const updatedScenes = currentScenes.filter((scene) => scene.id !== sceneToDelete)
-
-    // Log before and after for debugging
-    console.log("Before deletion:", currentScenes)
-    console.log("After deletion:", updatedScenes)
-
-    // Update state and localStorage
-    setScenes(updatedScenes)
-    localStorage.setItem(`gallery-${galleryId}-scenes`, JSON.stringify(updatedScenes))
-
-    // If the deleted scene was selected
-    if (selectedSceneId === sceneToDelete) {
-      if (updatedScenes.length > 0) {
-        // Select the first available scene
-        if (currentView === "gallery") {
-          onSceneSelect(updatedScenes[0].id)
-        }
-      } else {
-        // No scenes left, notify parent with empty string
+      // If the deleted scene was selected, clear selection
+      if (selectedSceneId === sceneToDelete.toString()) {
         onSceneSelect("")
       }
+
+      toast({
+        title: "Success",
+        description: "Scene deleted successfully!",
+      })
+    } catch (error) {
+      console.error("Error deleting scene:", error)
+      toast({
+        title: "Error",
+        description: "Failed to delete scene",
+        variant: "destructive",
+      })
     }
 
-    // If this was the last scene, trigger a custom event to notify other components
-    if (updatedScenes.length === 0) {
-      // Set a flag in localStorage to indicate that all scenes were intentionally deleted
-      localStorage.setItem(`gallery-${galleryId}-all-scenes-deleted`, "true")
-
-      if (typeof window !== "undefined") {
-        const event = new CustomEvent("allScenesDeleted", {
-          detail: { galleryId },
-        })
-        window.dispatchEvent(event)
-
-        // Also dispatch a custom event for scene deleted
-        const sceneDeletedEvent = new CustomEvent("sceneDeleted")
-        window.dispatchEvent(sceneDeletedEvent)
-      }
-    } else {
-      // Dispatch a custom event for scene deleted
-      if (typeof window !== "undefined") {
-        const sceneDeletedEvent = new CustomEvent("sceneDeleted")
-        window.dispatchEvent(sceneDeletedEvent)
-      }
-    }
-
-    // Close the modal
     setIsDeleteModalOpen(false)
     setSceneToDelete(null)
-
-    toast({
-      title: t("gallery.sceneDeleted"),
-      description: t("gallery.sceneDeletedDescription"),
-    })
   }
 
-  // Update the handleSaveSceneName function to ensure immediate updates
-  const handleSaveSceneName = (sceneId: string) => {
+  const handleSaveSceneName = async (sceneId: number) => {
     if (!newSceneName.trim()) {
-      // Don't save empty names
       setEditingSceneId(null)
       return
     }
 
-    const updatedScenes = scenes.map((scene) => (scene.id === sceneId ? { ...scene, name: newSceneName } : scene))
+    try {
+      await apiClient.updateScene(sceneId, { name: newSceneName })
+      await loadScenes()
+      setEditingSceneId(null)
+      setNewSceneName("")
 
-    setScenes(updatedScenes)
-    setEditingSceneId(null)
-
-    // Update localStorage
-    localStorage.setItem(`gallery-${galleryId}-scenes`, JSON.stringify(updatedScenes))
-
-    // Always notify the parent component about the scene update
-    // This ensures the scene name is updated everywhere immediately
-    if (sceneId === selectedSceneId) {
-      // Force a re-selection to update the scene name in the parent
-      onSceneSelect(sceneId)
-
-      // Trigger a custom event to notify other components about the scene name change
+      // Диспетчер події для оновлення імені сцени в інших компонентах
       if (typeof window !== "undefined") {
         const event = new CustomEvent("sceneNameChanged", {
           detail: { sceneId, newName: newSceneName },
         })
         window.dispatchEvent(event)
       }
+
+      toast({
+        title: "Success",
+        description: "Scene name updated successfully!",
+      })
+    } catch (error) {
+      console.error("Error updating scene:", error)
+      toast({
+        title: "Error",
+        description: "Failed to update scene name",
+        variant: "destructive",
+      })
     }
   }
 
-  // Update the handleSceneClick function to ensure proper view switching
-  const handleSceneClick = (sceneId: string) => {
+  const handleSceneClick = (sceneId: number) => {
     // When clicking on a scene, always switch to gallery view
     if (currentView !== "gallery") {
       onViewChange?.("gallery")
-
-      // Small delay to ensure view change happens before scene selection
       setTimeout(() => {
-        onSceneSelect(sceneId)
+        onSceneSelect(sceneId.toString())
       }, 10)
     } else {
-      // If already in gallery view, just select the scene
-      onSceneSelect(sceneId)
+      onSceneSelect(sceneId.toString())
     }
   }
 
-  const handleEditScene = (sceneId: string, e: React.MouseEvent) => {
-    e.stopPropagation() // Prevent scene selection when editing
+  const handleEditScene = (sceneId: number, e: React.MouseEvent) => {
+    e.stopPropagation()
     const scene = scenes.find((s) => s.id === sceneId)
     if (scene) {
       setEditingSceneId(sceneId)
@@ -312,31 +236,44 @@ export default function GallerySidebar({
     }
   }
 
-  const handleSaveGalleryDetails = () => {
-    onGalleryNameChange(editedGalleryName)
-    onShootingDateChange(editedShootingDate)
-    setIsEditingGallery(false)
+  const handleSaveGalleryDetails = async () => {
+    try {
+      await Promise.all([onGalleryNameChange(editedGalleryName), onShootingDateChange(editedShootingDate)])
+      setIsEditingGallery(false)
 
-    // Store in localStorage for persistence
-    localStorage.setItem(`gallery-${galleryId}-name`, editedGalleryName)
-    localStorage.setItem(`gallery-${galleryId}-date`, editedShootingDate)
+      // Диспетчер події для оновлення галереї в інших компонентах
+      if (typeof window !== "undefined") {
+        const event = new CustomEvent("galleryUpdated", {
+          detail: {
+            galleryId,
+            name: editedGalleryName,
+            shooting_date: editedShootingDate,
+          },
+        })
+        window.dispatchEvent(event)
+      }
+    } catch (error) {
+      console.error("Error updating gallery details:", error)
+    }
   }
 
+  // Generate public gallery link
   const galleryLink =
-    typeof window !== "undefined" ? `${window.location.origin}/galleries/${galleryId}` : `/galleries/${galleryId}`
+    typeof window !== "undefined" ? `${window.location.origin}/gallery/${galleryId}` : `/gallery/${galleryId}`
 
   const copyLinkToClipboard = () => {
     navigator.clipboard.writeText(galleryLink).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
+      toast({
+        title: "Link Copied!",
+        description: "Gallery link has been copied to clipboard",
+      })
     })
   }
 
-  // Always show scenes regardless of view
   const shouldShowScenes = true
-
-  // Get the current scene name if a scene is selected
-  const selectedScene = selectedSceneId ? scenes.find((scene) => scene.id === selectedSceneId) : null
+  const selectedScene = selectedSceneId ? scenes.find((scene) => scene.id.toString() === selectedSceneId) : null
   const formattedDate = shootingDate ? format(new Date(shootingDate), "MMMM d, yyyy") : ""
 
   return (
@@ -393,70 +330,80 @@ export default function GallerySidebar({
           </button>
         </div>
 
-        {/* Scrollable scenes section - only shown in gallery view */}
+        {/* Scrollable scenes section */}
         <div className="px-6 overflow-y-auto flex-1">
           {shouldShowScenes && expandedScenes && (
             <div className="pl-7 space-y-2 mb-2">
-              {scenes.map((scene) => (
-                <div
-                  key={scene.id}
-                  className={`flex items-center group ${selectedSceneId === scene.id ? "bg-[#E3E3E3] rounded" : ""}`}
-                >
-                  {editingSceneId === scene.id ? (
-                    <div className="flex items-center space-x-2 w-full pr-2 py-1 mt-1">
-                      <Input
-                        ref={editInputRef}
-                        value={newSceneName}
-                        onChange={(e) => setNewSceneName(e.target.value)}
-                        className="h-7 text-sm"
-                        autoFocus
-                        onBlur={() => handleSaveSceneName(scene.id)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            handleSaveSceneName(scene.id)
-                          }
-                        }}
-                      />
-                    </div>
-                  ) : (
-                    <>
-                      <button
-                        className={`text-sm flex-1 text-left px-2 py-1 hover:text-[#B9FF66] cursor-pointer ${
-                          selectedSceneId === scene.id ? "font-medium" : ""
-                        }`}
-                        onClick={() => handleSceneClick(scene.id)}
-                      >
-                        {scene.name}
-                      </button>
-                      <div className="flex opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleEditScene(scene.id, e)
-                          }}
-                        >
-                          <Edit2 className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6"
-                          onClick={(e) => handleDeleteClick(scene.id, e)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </>
-                  )}
+              {isLoading ? (
+                <div className="text-center py-4">
+                  <p className="text-sm text-gray-500">Loading scenes...</p>
                 </div>
-              ))}
+              ) : (
+                scenes.map((scene) => (
+                  <div
+                    key={scene.id}
+                    className={`flex items-center group ${
+                      selectedSceneId === scene.id.toString() ? "bg-[#E3E3E3] rounded" : ""
+                    }`}
+                  >
+                    {editingSceneId === scene.id ? (
+                      <div className="flex items-center space-x-2 w-full pr-2 py-1 mt-1">
+                        <Input
+                          ref={editInputRef}
+                          value={newSceneName}
+                          onChange={(e) => setNewSceneName(e.target.value)}
+                          className="h-7 text-sm"
+                          autoFocus
+                          onBlur={() => handleSaveSceneName(scene.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              handleSaveSceneName(scene.id)
+                            }
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <>
+                        <button
+                          className={`text-sm flex-1 text-left px-2 py-1 hover:text-[#B9FF66] cursor-pointer ${
+                            selectedSceneId === scene.id.toString() ? "font-medium" : ""
+                          }`}
+                          onClick={() => handleSceneClick(scene.id)}
+                        >
+                          {scene.name}
+                          {scene.photo_count !== undefined && (
+                            <span className="text-xs text-gray-400 ml-1">({scene.photo_count})</span>
+                          )}
+                        </button>
+                        <div className="flex opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleEditScene(scene.id, e)
+                            }}
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={(e) => handleDeleteClick(scene.id, e)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))
+              )}
             </div>
           )}
 
-          {/* Always show the Add Scene button in the same position */}
           <Button variant="ghost" className="text-sm text-[#B9FF66] hover:text-[#a8eb55] pl-7" onClick={handleAddScene}>
             <Plus className="h-4 w-4 mr-1" />
             {t("gallery.addScene")}

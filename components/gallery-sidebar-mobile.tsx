@@ -8,9 +8,9 @@ import { ChevronLeft, Menu, Heart, Paintbrush, Settings, ImageIcon, LinkIcon, Pl
 import { useLanguage } from "@/contexts/language-context"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import Link from "next/link"
-import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { apiClient } from "@/lib/api"
 
 interface GallerySidebarMobileProps {
   galleryId: string
@@ -103,37 +103,13 @@ export default function GallerySidebarMobile({
     }
   }, [editingSceneId])
 
-  const loadScenes = () => {
-    console.log("Loading scenes for gallery:", galleryId)
-    const storedScenes = localStorage.getItem(`gallery-${galleryId}-scenes`)
-    const allScenesDeleted = localStorage.getItem(`gallery-${galleryId}-all-scenes-deleted`) === "true"
-
-    if (storedScenes) {
-      try {
-        const parsedScenes = JSON.parse(storedScenes)
-        console.log("Loaded scenes:", parsedScenes)
-        setScenes(parsedScenes)
-      } catch (e) {
-        console.error("Failed to parse stored scenes", e)
-        if (!allScenesDeleted) {
-          // Only create default scene if not intentionally deleted
-          setScenes([{ id: "1", name: "New Scene" }])
-        } else {
-          setScenes([])
-        }
-      }
-    } else {
-      console.log("No stored scenes found")
-      if (!allScenesDeleted) {
-        // Only create default scene if not intentionally deleted
-        const defaultScene = { id: "1", name: "New Scene" }
-        setScenes([defaultScene])
-
-        // Save default scene to localStorage
-        localStorage.setItem(`gallery-${galleryId}-scenes`, JSON.stringify([defaultScene]))
-      } else {
-        setScenes([])
-      }
+  const loadScenes = async () => {
+    try {
+      const scenesData = await apiClient.getScenes(Number.parseInt(galleryId))
+      setScenes(scenesData)
+    } catch (error) {
+      console.error("Error loading scenes:", error)
+      setScenes([])
     }
   }
 
@@ -151,10 +127,6 @@ export default function GallerySidebarMobile({
     const galleryLink =
       typeof window !== "undefined" ? `${window.location.origin}/galleries/${galleryId}` : `/galleries/${galleryId}`
     navigator.clipboard.writeText(galleryLink)
-    toast({
-      title: t("gallery.linkCopied"),
-      description: t("gallery.linkCopiedDescription"),
-    })
     setOpen(false)
   }
 
@@ -200,12 +172,6 @@ export default function GallerySidebarMobile({
       const sceneAddedEvent = new CustomEvent("sceneAdded")
       window.dispatchEvent(sceneAddedEvent)
     }
-
-    // Don't automatically navigate to the new scene
-    toast({
-      title: t("gallery.sceneAdded"),
-      description: t("gallery.sceneAddedDescription"),
-    })
   }
 
   const handleEditScene = (sceneId: string, e: React.MouseEvent) => {
@@ -213,35 +179,22 @@ export default function GallerySidebarMobile({
     setEditingSceneId(sceneId)
   }
 
-  const handleSceneNameChange = (sceneId: string, newName: string) => {
+  const handleSceneNameChange = async (sceneId: string, newName: string) => {
     if (!newName.trim()) return
 
-    // Get current scenes from localStorage to ensure we have the latest
-    const storedScenes = localStorage.getItem(`gallery-${galleryId}-scenes`)
-    let currentScenes = []
+    try {
+      await apiClient.updateScene(Number.parseInt(sceneId), { name: newName })
+      await loadScenes()
 
-    if (storedScenes) {
-      try {
-        currentScenes = JSON.parse(storedScenes)
-      } catch (e) {
-        console.error("Failed to parse stored scenes", e)
-        currentScenes = [...scenes]
+      // Диспетчер події для оновлення імені сцени в інших компонентах
+      if (typeof window !== "undefined") {
+        const event = new CustomEvent("sceneNameChanged", {
+          detail: { sceneId, newName },
+        })
+        window.dispatchEvent(event)
       }
-    } else {
-      currentScenes = [...scenes]
-    }
-
-    const updatedScenes = currentScenes.map((scene) => (scene.id === sceneId ? { ...scene, name: newName } : scene))
-
-    setScenes(updatedScenes)
-    localStorage.setItem(`gallery-${galleryId}-scenes`, JSON.stringify(updatedScenes))
-
-    // Trigger a custom event to notify other components about the scene name change
-    if (typeof window !== "undefined") {
-      const event = new CustomEvent("sceneNameChanged", {
-        detail: { sceneId, newName },
-      })
-      window.dispatchEvent(event)
+    } catch (error) {
+      console.error("Error updating scene name:", error)
     }
   }
 
@@ -337,21 +290,10 @@ export default function GallerySidebarMobile({
         }
       }
 
-      // Show success message
-      toast({
-        title: t("gallery.sceneDeleted"),
-        description: t("gallery.sceneDeletedDescription"),
-      })
-
       // Keep the sidebar open - don't close it
       // setOpen(false) - removed this line
     } catch (error) {
       console.error("Error deleting scene:", error)
-      toast({
-        title: "Error",
-        description: "Failed to delete scene. Please try again.",
-        variant: "destructive",
-      })
     } finally {
       // Close dialog and reset state
       setDeleteDialogOpen(false)
@@ -359,19 +301,25 @@ export default function GallerySidebarMobile({
     }
   }
 
-  const handleSaveGalleryDetails = () => {
-    onGalleryNameChange(editedGalleryName)
-    onShootingDateChange(editedShootingDate)
-    setIsEditingGallery(false)
+  const handleSaveGalleryDetails = async () => {
+    try {
+      await Promise.all([onGalleryNameChange(editedGalleryName), onShootingDateChange(editedShootingDate)])
+      setIsEditingGallery(false)
 
-    // Store in localStorage for persistence
-    localStorage.setItem(`gallery-${galleryId}-name`, editedGalleryName)
-    localStorage.setItem(`gallery-${galleryId}-date`, editedShootingDate)
-
-    toast({
-      title: t("gallery.saved"),
-      description: t("gallery.galleryDetailsSaved"),
-    })
+      // Диспетчер події для оновлення галереї в інших компонентах
+      if (typeof window !== "undefined") {
+        const event = new CustomEvent("galleryUpdated", {
+          detail: {
+            galleryId,
+            name: editedGalleryName,
+            shooting_date: editedShootingDate,
+          },
+        })
+        window.dispatchEvent(event)
+      }
+    } catch (error) {
+      console.error("Error updating gallery details:", error)
+    }
   }
 
   // Format date for display

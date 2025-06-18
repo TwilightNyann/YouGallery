@@ -4,6 +4,7 @@ import * as React from "react"
 import * as AccordionPrimitive from "@radix-ui/react-accordion"
 import { Plus, Minus } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useLanguage } from "@/contexts/language-context"
 
 const Accordion = AccordionPrimitive.Root
 
@@ -67,6 +68,7 @@ AccordionContent.displayName = "AccordionContent"
 
 export function FAQSection() {
   const [openItem, setOpenItem] = React.useState<string>("item-1")
+  const { t } = useLanguage()
 
   return (
     <div className="py-6">
@@ -74,43 +76,30 @@ export function FAQSection() {
         <Accordion type="single" value={openItem} onValueChange={setOpenItem} className="w-full">
           <AccordionItem value="item-1">
             <AccordionTrigger data-state={openItem === "item-1" ? "open" : "closed"}>
-              Are there any additional fees or charges that may apply?
+              {t("help.faq.question1")}
             </AccordionTrigger>
-            <AccordionContent>
-              Our pricing plans include a wide range of digital marketing services, including website design and
-              development, SEO, PPC advertising, social media marketing, content marketing, and more. We also offer
-              custom packages that can be tailored to meet the specific needs of your business.
-            </AccordionContent>
+            <AccordionContent>{t("help.faq.answer1")}</AccordionContent>
           </AccordionItem>
 
           <AccordionItem value="item-2">
             <AccordionTrigger data-state={openItem === "item-2" ? "open" : "closed"}>
-              Can I change or cancel my plan at any time?
+              {t("help.faq.question2")}
             </AccordionTrigger>
-            <AccordionContent>
-              Yes, you can change or cancel your plan at any time. We believe in flexibility and want to ensure our
-              services align with your business needs. Contact our support team to discuss your requirements.
-            </AccordionContent>
+            <AccordionContent>{t("help.faq.answer2")}</AccordionContent>
           </AccordionItem>
 
           <AccordionItem value="item-3">
             <AccordionTrigger data-state={openItem === "item-3" ? "open" : "closed"}>
-              What payment methods do you accept?
+              {t("help.faq.question3")}
             </AccordionTrigger>
-            <AccordionContent>
-              We accept all major credit cards, bank transfers, and PayPal. For enterprise clients, we also offer custom
-              payment terms to suit your organization's requirements.
-            </AccordionContent>
+            <AccordionContent>{t("help.faq.answer3")}</AccordionContent>
           </AccordionItem>
 
           <AccordionItem value="item-4">
             <AccordionTrigger data-state={openItem === "item-4" ? "open" : "closed"}>
-              Do you offer any discounts for long-term commitments?
+              {t("help.faq.question4")}
             </AccordionTrigger>
-            <AccordionContent>
-              Yes, we offer special pricing for clients who commit to longer-term contracts. Please contact our sales
-              team to discuss available discounts and terms for extended partnerships.
-            </AccordionContent>
+            <AccordionContent>{t("help.faq.answer4")}</AccordionContent>
           </AccordionItem>
         </Accordion>
       </div>

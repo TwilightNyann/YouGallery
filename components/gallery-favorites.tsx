@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import PhotoGrid from "@/components/photo-grid"
 import { useLanguage } from "@/contexts/language-context"
 import { useToast } from "@/hooks/use-toast"
+import apiClient from "@/lib/api"
 
 interface GalleryFavoritesProps {
   galleryId: string
@@ -13,108 +14,96 @@ interface GalleryFavoritesProps {
 export default function GalleryFavorites({ galleryId }: GalleryFavoritesProps) {
   const [sortBy, setSortBy] = useState("newest")
   const [favoritePhotos, setFavoritePhotos] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
   const { t } = useLanguage()
   const { toast } = useToast()
 
-  // Load photos from localStorage
+  // Load client favorites from backend
   useEffect(() => {
-    const loadFavorites = () => {
-      const storedPhotosByScene = localStorage.getItem(`gallery-${galleryId}-photos`)
-      if (storedPhotosByScene) {
-        try {
-          const photosByScene = JSON.parse(storedPhotosByScene)
-
-          // Extract all favorited photos from all scenes
-          const allFavorites: any[] = []
-          Object.keys(photosByScene).forEach((sceneId) => {
-            photosByScene[sceneId].forEach((photo: any) => {
-              if (photo.isFavorite) {
-                allFavorites.push({
-                  ...photo,
-                  sceneId,
-                })
-              }
-            })
-          })
-
-          setFavoritePhotos(allFavorites)
-        } catch (e) {
-          console.error("Failed to parse stored photos", e)
-        }
-      }
-    }
-
-    loadFavorites()
-
-    // Add event listener to reload favorites when localStorage changes
-    window.addEventListener("storage", loadFavorites)
-    return () => {
-      window.removeEventListener("storage", loadFavorites)
-    }
+    loadClientFavorites()
   }, [galleryId])
 
-  const handleFavoriteToggle = (photoId: number) => {
-    // Get the current photos by scene
-    const storedPhotosByScene = localStorage.getItem(`gallery-${galleryId}-photos`)
-    if (storedPhotosByScene) {
-      try {
-        const photosByScene = JSON.parse(storedPhotosByScene)
+  const loadClientFavorites = async () => {
+    try {
+      setLoading(true)
+      console.log(`🔍 Loading client favorites for gallery ${galleryId}`)
 
-        // Update the favorite status in all scenes
-        Object.keys(photosByScene).forEach((sceneId) => {
-          photosByScene[sceneId] = photosByScene[sceneId].map((photo: any) =>
-            photo.id === photoId ? { ...photo, isFavorite: !photo.isFavorite } : photo,
-          )
-        })
+      // Get all favorites for this gallery from backend
+      const favorites = await apiClient.getGalleryFavorites(Number.parseInt(galleryId))
+      console.log(`✅ Loaded ${favorites.length} client favorites:`, favorites)
 
-        // Save back to localStorage
-        localStorage.setItem(`gallery-${galleryId}-photos`, JSON.stringify(photosByScene))
-
-        // Update the local state
-        setFavoritePhotos((prev) => prev.filter((photo) => photo.id !== photoId))
-
-        toast({
-          title: t("gallery.photoUpdated"),
-          description: t("gallery.removedFromFavorites"),
-        })
-      } catch (e) {
-        console.error("Failed to update favorites", e)
-      }
+      setFavoritePhotos(favorites)
+    } catch (error) {
+      console.error("❌ Error loading client favorites:", error)
+      setFavoritePhotos([])
+    } finally {
+      setLoading(false)
     }
   }
 
-  const handleDeletePhoto = (photoId: number) => {
-    // Get the current photos by scene
-    const storedPhotosByScene = localStorage.getItem(`gallery-${galleryId}-photos`)
-    if (storedPhotosByScene) {
-      try {
-        const photosByScene = JSON.parse(storedPhotosByScene)
+  // Listen for favorite updates from public gallery
+  useEffect(() => {
+    const handleFavoriteUpdate = () => {
+      console.log("🔄 Favorite updated, reloading...")
+      loadClientFavorites()
+    }
 
-        // Remove the photo from all scenes
-        Object.keys(photosByScene).forEach((sceneId) => {
-          photosByScene[sceneId] = photosByScene[sceneId].filter((photo: any) => photo.id !== photoId)
-        })
-
-        // Save back to localStorage
-        localStorage.setItem(`gallery-${galleryId}-photos`, JSON.stringify(photosByScene))
-
-        // Update the local state
-        setFavoritePhotos((prev) => prev.filter((photo) => photo.id !== photoId))
-
-        toast({
-          title: t("gallery.photoDeleted"),
-          description: t("gallery.photoDeletedDescription"),
-        })
-      } catch (e) {
-        console.error("Failed to delete photo", e)
+    // Listen for storage changes (when clients add/remove favorites)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key && e.key.includes(`public-gallery-${galleryId}-favorites`)) {
+        console.log("🔄 Client favorites changed in localStorage, reloading...")
+        loadClientFavorites()
       }
     }
+
+    // Listen for custom events
+    window.addEventListener("clientFavoriteUpdated", handleFavoriteUpdate)
+    window.addEventListener("storage", handleStorageChange)
+
+    return () => {
+      window.removeEventListener("clientFavoriteUpdated", handleFavoriteUpdate)
+      window.removeEventListener("storage", handleStorageChange)
+    }
+  }, [galleryId])
+
+  const handleDeletePhoto = async (photoId: number) => {
+    try {
+      await apiClient.deletePhoto(photoId)
+
+      // Remove from local state
+      setFavoritePhotos((prev) => prev.filter((photo) => photo.id !== photoId))
+
+      toast({
+        title: t("gallery.photoDeleted"),
+        description: t("gallery.photoDeletedDescription"),
+      })
+    } catch (error) {
+      console.error("Failed to delete photo", error)
+      toast({
+        title: "Error",
+        description: "Failed to delete photo",
+        variant: "destructive",
+      })
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="p-8 max-w-7xl mx-auto">
+        <div className="flex justify-center items-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-gray-900"></div>
+        </div>
+      </div>
+    )
   }
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
       <div className="flex justify-between items-center mb-8">
-        <h1 className="text-2xl font-bold">{t("gallery.favorites")}</h1>
+        <div>
+          <h1 className="text-2xl font-bold">{t("gallery.favorites")}</h1>
+          <p className="text-gray-600 mt-1">Photos liked by clients viewing your gallery</p>
+        </div>
 
         <Select value={sortBy} onValueChange={setSortBy}>
           <SelectTrigger className="w-[180px]">
@@ -129,15 +118,26 @@ export default function GalleryFavorites({ galleryId }: GalleryFavoritesProps) {
       </div>
 
       {favoritePhotos.length > 0 ? (
-        <PhotoGrid
-          photos={favoritePhotos}
-          sortBy={sortBy}
-          onFavoriteToggle={handleFavoriteToggle}
-          onDeletePhoto={handleDeletePhoto}
-        />
+        <div className="mb-4">
+          <p className="text-sm text-gray-500 mb-6">
+            {favoritePhotos.length} photo{favoritePhotos.length !== 1 ? "s" : ""} liked by clients
+          </p>
+          <PhotoGrid
+            photos={favoritePhotos}
+            sortBy={sortBy}
+            onDeletePhoto={handleDeletePhoto}
+            enableReordering={false}
+          />
+        </div>
       ) : (
         <div className="text-center py-12 bg-[#F3F3F3] rounded-lg">
-          <p className="text-gray-500">{t("gallery.noFavorites")}</p>
+          <div className="max-w-md mx-auto">
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No client favorites yet</h3>
+            <p className="text-gray-500">
+              When clients view your gallery and like photos, they will appear here. Share your gallery link to start
+              collecting favorites!
+            </p>
+          </div>
         </div>
       )}
     </div>

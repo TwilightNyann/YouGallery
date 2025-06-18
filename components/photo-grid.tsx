@@ -1,61 +1,110 @@
 "use client"
 
-import type React from "react"
-
-import { useState, useEffect } from "react"
-import Image from "next/image"
-import { Dialog, DialogContent } from "@/components/ui/dialog"
-import { Heart, Trash2, MoreVertical, Eye, ImageIcon } from "lucide-react"
+import { useState } from "react"
+import { MoreVertical, Heart, Trash2, Download, Eye, ImageIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { useLanguage } from "@/contexts/language-context"
-import { SimpleModal } from "@/components/simple-modal"
+import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { SimpleModal } from "@/components/simple-modal"
+import { useLanguage } from "@/contexts/language-context"
 
 interface Photo {
   id: number
   url: string
   name: string
+  filename: string
+  original_filename: string
+  file_path: string
+  file_size: number
+  mime_type: string
+  order_index: number
+  scene_id: number
+  created_at: string
   isFavorite?: boolean
 }
 
 interface PhotoGridProps {
   photos: Photo[]
   sortBy: string
-  showNames?: boolean
-  onFavoriteToggle?: (photoId: number) => void
-  onDeletePhoto?: (photoId: number) => void
-  onSetAsCover?: (photoId: number) => void
-  galleryId?: string
+  showNames: boolean
+  onDeletePhoto: (photoId: number) => void
+  onSetAsCover: (photoId: number) => void
+  galleryId: string
 }
 
-export default function PhotoGrid({
-  photos,
-  sortBy,
-  showNames = false,
-  onFavoriteToggle = () => {},
-  onDeletePhoto = () => {},
-  onSetAsCover = () => {},
-  galleryId,
-}: PhotoGridProps) {
+export default function PhotoGrid({ photos, sortBy, showNames, onDeletePhoto, onSetAsCover }: PhotoGridProps) {
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null)
   const [photoToDelete, setPhotoToDelete] = useState<Photo | null>(null)
+  const [imageErrors, setImageErrors] = useState<Set<number>>(new Set())
   const { t } = useLanguage()
 
-  const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null)
-  const [rightClickedPhoto, setRightClickedPhoto] = useState<Photo | null>(null)
+  // Get API base URL for constructing full image URLs
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 
+  // Sort photos based on sortBy prop
   const sortedPhotos = [...photos].sort((a, b) => {
-    if (sortBy === "newest") {
-      return b.id - a.id
-    } else if (sortBy === "oldest") {
-      return a.id - b.id
-    } else {
-      return a.name.localeCompare(b.name)
+    switch (sortBy) {
+      case "newest":
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      case "oldest":
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      case "name":
+        return a.original_filename.localeCompare(b.original_filename)
+      default:
+        return 0
     }
   })
 
-  const handleFavoriteToggle = (photo: Photo) => {
-    onFavoriteToggle(photo.id)
+  // Construct full URL for images
+  const getImageUrl = (photo: Photo) => {
+    if (photo.url.startsWith("http")) {
+      return photo.url
+    }
+    // Construct full URL with API base
+    return `${API_BASE_URL}${photo.url}`
+  }
+
+  const handleImageError = (photoId: number, url: string) => {
+    console.error(`Failed to load image: ${url}`)
+    setImageErrors((prev) => new Set([...prev, photoId]))
+  }
+
+  const handleImageLoad = (photoId: number, url: string) => {
+    console.log(`Successfully loaded image: ${url}`)
+    setImageErrors((prev) => {
+      const newSet = new Set(prev)
+      newSet.delete(photoId)
+      return newSet
+    })
+  }
+
+  const handleDownload = async (photo: Photo) => {
+    try {
+      const imageUrl = getImageUrl(photo)
+      const headers: HeadersInit = {}
+
+      // Add ngrok header if using ngrok
+      if (API_BASE_URL.includes("ngrok")) {
+        headers["ngrok-skip-browser-warning"] = "true"
+      }
+
+      const response = await fetch(imageUrl, { headers })
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = photo.original_filename
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+    } catch (error) {
+      console.error("Error downloading photo:", error)
+      alert("Failed to download photo. Please try again.")
+    }
   }
 
   const handleDeleteClick = (photo: Photo) => {
@@ -69,119 +118,106 @@ export default function PhotoGrid({
     }
   }
 
-  const handleContextMenu = (e: React.MouseEvent, photo: Photo) => {
-    e.preventDefault() // Prevent default browser context menu
-    setRightClickedPhoto(photo)
-    setContextMenuPosition({ x: e.clientX, y: e.clientY })
+  const handleSetAsCover = (photo: Photo) => {
+    console.log(`🖼️ PhotoGrid: Setting photo ${photo.id} as cover`)
+    onSetAsCover(photo.id)
   }
 
-  // Close context menu when clicking elsewhere
-  useEffect(() => {
-    const handleClickOutside = () => {
-      setContextMenuPosition(null)
-    }
-
-    document.addEventListener("click", handleClickOutside)
-    return () => {
-      document.removeEventListener("click", handleClickOutside)
-    }
-  }, [])
-
-  const handleSetAsCover = (photo: Photo) => {
-    if (galleryId) {
-      // Store the cover photo ID in localStorage
-      localStorage.setItem(`gallery-${galleryId}-cover`, photo.id.toString())
-      onSetAsCover(photo.id)
-    }
+  if (photos.length === 0) {
+    return (
+      <div className="text-center py-12 bg-[#F3F3F3] rounded-lg">
+        <p className="text-gray-500">No photos in this scene</p>
+      </div>
+    )
   }
 
   return (
     <>
-      <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
-        {sortedPhotos.map((photo) => (
-          <div
-            key={photo.id}
-            className="relative aspect-[4/3] rounded-lg overflow-hidden group"
-            onClick={() => setSelectedPhoto(photo)}
-            onContextMenu={(e) => handleContextMenu(e, photo)}
-          >
-            <Image
-              src={photo.url || "/placeholder.svg"}
-              alt={photo.name}
-              fill
-              className="object-cover transition-transform duration-300 group-hover:scale-105"
-            />
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+        {sortedPhotos.map((photo) => {
+          const imageUrl = getImageUrl(photo)
+          return (
+            <div
+              key={photo.id}
+              className="group relative bg-white rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow"
+            >
+              <div className="aspect-square relative cursor-pointer" onClick={() => setSelectedPhoto(photo)}>
+                {imageErrors.has(photo.id) ? (
+                  <div className="w-full h-full flex items-center justify-center bg-gray-200">
+                    <div className="text-center">
+                      <ImageIcon className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                      <p className="text-xs text-gray-500">Image not found</p>
+                      <p className="text-xs text-gray-400 mt-1">{photo.filename}</p>
+                      <p className="text-xs text-gray-400 mt-1">URL: {imageUrl}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <img
+                    src={imageUrl || "/placeholder.svg"}
+                    alt={photo.original_filename}
+                    className="w-full h-full object-cover"
+                    onError={() => handleImageError(photo.id, imageUrl)}
+                    onLoad={() => handleImageLoad(photo.id, imageUrl)}
+                    crossOrigin="anonymous"
+                  />
+                )}
 
-            {/* Three dots menu */}
-            <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="h-8 w-8 rounded-full bg-black/40 border-none hover:bg-black/60"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <MoreVertical className="h-4 w-4 text-white" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48" onClick={(e) => e.stopPropagation()}>
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setSelectedPhoto(photo)
-                    }}
-                  >
-                    <Eye className="mr-2 h-4 w-4" />
-                    {t("gallery.viewPhoto")}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleFavoriteToggle(photo)
-                    }}
-                  >
-                    <Heart className={`mr-2 h-4 w-4 ${photo.isFavorite ? "fill-[#B9FF66]" : ""}`} />
-                    {photo.isFavorite ? t("gallery.removeFromFavorites") : t("gallery.addToFavorites")}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleSetAsCover(photo)
-                    }}
-                  >
-                    <ImageIcon className="mr-2 h-4 w-4" />
-                    {t("gallery.setAsCover")}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleDeleteClick(photo)
-                    }}
-                    className="text-red-600 focus:text-red-600"
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    {t("gallery.deletePhoto")}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                {/* Actions menu */}
+                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0 bg-black/40 hover:bg-black/60 text-white"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => setSelectedPhoto(photo)}>
+                        <Eye className="mr-2 h-4 w-4" />
+                        View Photo
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleDownload(photo)}>
+                        <Download className="mr-2 h-4 w-4" />
+                        Download
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleSetAsCover(photo)}>
+                        <ImageIcon className="mr-2 h-4 w-4" />
+                        Set as Cover
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleDeleteClick(photo)}
+                        className="text-red-600 hover:text-red-700"
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+
+                {/* Favorite indicator */}
+                {photo.isFavorite && (
+                  <div className="absolute bottom-2 right-2">
+                    <Heart className="h-4 w-4 text-red-500 fill-current" />
+                  </div>
+                )}
+              </div>
+
+              {/* Photo name */}
+              {showNames && (
+                <div className="p-2">
+                  <p className="text-xs text-gray-600 truncate" title={photo.original_filename}>
+                    {photo.original_filename}
+                  </p>
+                </div>
+              )}
             </div>
-
-            {/* Photo name display */}
-            {showNames && (
-              <div className="absolute bottom-0 left-0 right-0 bg-black/70 py-2 px-3">
-                <p className="text-white text-sm truncate">{photo.name}</p>
-              </div>
-            )}
-
-            {/* Favorite indicator */}
-            {photo.isFavorite && (
-              <div className="absolute top-2 left-2">
-                <Heart className="h-5 w-5 fill-[#B9FF66] stroke-[#B9FF66]" />
-              </div>
-            )}
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       {/* Photo detail dialog */}
@@ -189,15 +225,27 @@ export default function PhotoGrid({
         <DialogContent className="max-w-[95vw] sm:max-w-2xl md:max-w-3xl lg:max-w-4xl p-0 sm:p-6">
           {selectedPhoto && (
             <div className="relative aspect-[4/3]">
-              <Image
-                src={selectedPhoto.url || "/placeholder.svg"}
-                alt={selectedPhoto.name}
-                fill
-                className="object-contain"
-              />
+              {imageErrors.has(selectedPhoto.id) ? (
+                <div className="w-full h-full flex items-center justify-center bg-gray-200">
+                  <div className="text-center">
+                    <ImageIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-500">Image not available</p>
+                    <p className="text-sm text-gray-400 mt-2">{selectedPhoto.filename}</p>
+                    <p className="text-sm text-gray-400 mt-2">URL: {getImageUrl(selectedPhoto)}</p>
+                  </div>
+                </div>
+              ) : (
+                <img
+                  src={getImageUrl(selectedPhoto) || "/placeholder.svg"}
+                  alt={selectedPhoto.original_filename}
+                  className="w-full h-full object-contain"
+                  onError={() => handleImageError(selectedPhoto.id, getImageUrl(selectedPhoto))}
+                  onLoad={() => handleImageLoad(selectedPhoto.id, getImageUrl(selectedPhoto))}
+                  crossOrigin="anonymous"
+                />
+              )}
               <div className="absolute bottom-0 left-0 right-0 bg-black/70 py-2 px-3 flex justify-between items-center">
-                <p className="text-white text-sm">{selectedPhoto.name}</p>
-                {selectedPhoto.isFavorite && <Heart className="h-5 w-5 fill-[#B9FF66] stroke-[#B9FF66]" />}
+                <p className="text-white text-sm">{selectedPhoto.original_filename}</p>
               </div>
             </div>
           )}
@@ -205,78 +253,21 @@ export default function PhotoGrid({
       </Dialog>
 
       {/* Delete confirmation modal */}
-      <SimpleModal
-        isOpen={!!photoToDelete}
-        onClose={() => setPhotoToDelete(null)}
-        title={t("gallery.deletePhotoTitle")}
-      >
+      <SimpleModal isOpen={!!photoToDelete} onClose={() => setPhotoToDelete(null)} title="Delete Photo">
         <div className="space-y-4">
-          <p>{t("gallery.deletePhotoConfirmation")}</p>
-          <p className="font-medium">{photoToDelete?.name}</p>
+          <p>Are you sure you want to delete this photo?</p>
+          <p className="font-medium">{photoToDelete?.original_filename}</p>
 
           <div className="flex justify-end space-x-2 pt-4">
             <Button variant="outline" onClick={() => setPhotoToDelete(null)}>
-              {t("gallery.cancel")}
+              Cancel
             </Button>
             <Button variant="destructive" onClick={confirmDelete}>
-              {t("gallery.delete")}
+              Delete
             </Button>
           </div>
         </div>
       </SimpleModal>
-
-      {/* Context Menu */}
-      {contextMenuPosition && rightClickedPhoto && (
-        <div
-          className="fixed z-50 bg-white rounded-md shadow-md py-1 border border-gray-200 w-48"
-          style={{
-            top: `${Math.min(contextMenuPosition.y, window.innerHeight - 200)}px`,
-            left: `${Math.min(contextMenuPosition.x, window.innerWidth - 150)}px`,
-            transform: "translate(-50%, -50%)",
-          }}
-        >
-          <button
-            className="w-full text-left px-3 py-2 text-sm flex items-center hover:bg-gray-100"
-            onClick={() => {
-              setSelectedPhoto(rightClickedPhoto)
-              setContextMenuPosition(null)
-            }}
-          >
-            <Eye className="mr-2 h-4 w-4" />
-            {t("gallery.viewPhoto")}
-          </button>
-          <button
-            className="w-full text-left px-3 py-2 text-sm flex items-center hover:bg-gray-100"
-            onClick={() => {
-              handleFavoriteToggle(rightClickedPhoto)
-              setContextMenuPosition(null)
-            }}
-          >
-            <Heart className={`mr-2 h-4 w-4 ${rightClickedPhoto.isFavorite ? "fill-[#B9FF66]" : ""}`} />
-            {rightClickedPhoto.isFavorite ? t("gallery.removeFromFavorites") : t("gallery.addToFavorites")}
-          </button>
-          <button
-            className="w-full text-left px-3 py-2 text-sm flex items-center hover:bg-gray-100"
-            onClick={() => {
-              handleSetAsCover(rightClickedPhoto)
-              setContextMenuPosition(null)
-            }}
-          >
-            <ImageIcon className="mr-2 h-4 w-4" />
-            {t("gallery.setAsCover")}
-          </button>
-          <button
-            className="w-full text-left px-3 py-2 text-sm flex items-center hover:bg-gray-100 text-red-600"
-            onClick={() => {
-              handleDeleteClick(rightClickedPhoto)
-              setContextMenuPosition(null)
-            }}
-          >
-            <Trash2 className="mr-2 h-4 w-4" />
-            {t("gallery.deletePhoto")}
-          </button>
-        </div>
-      )}
     </>
   )
 }

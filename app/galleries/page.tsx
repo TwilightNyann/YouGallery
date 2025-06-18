@@ -1,30 +1,47 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Plus } from "lucide-react"
 import GalleryGrid from "@/components/gallery-grid"
 import Navbar from "@/components/navbar"
 import Footer from "@/components/footer"
-import { useLanguage } from "@/contexts/language-context"
+import { useAuth } from "@/contexts/auth-context"
 import CreateGalleryModal from "@/components/create-gallery-modal"
 import GalleryStatistics from "@/components/gallery-statistics"
 import { StorageUsage } from "@/components/storage-usage"
+import { useRouter } from "next/navigation"
 
 export default function GalleriesPage() {
-  const { t } = useLanguage()
+  const { isAuthenticated, isLoading } = useAuth()
+  const router = useRouter()
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [activeTab, setActiveTab] = useState("galleries")
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      router.push("/login")
+    }
+  }, [isAuthenticated, isLoading, router])
 
   const handleCreateGallery = (name: string, date: string) => {
-    // In a real app, this would make an API call to create the gallery
-    console.log("Creating gallery:", { name, date })
-
-    // Close the modal after creation
+    // Refresh the gallery list
+    setRefreshKey((prev) => prev + 1)
     setIsCreateModalOpen(false)
+  }
 
-    // In a real app, you would refresh the gallery list or add the new gallery to the state
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-gray-900"></div>
+      </div>
+    )
+  }
+
+  if (!isAuthenticated) {
+    return null
   }
 
   return (
@@ -35,10 +52,10 @@ export default function GalleriesPage() {
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full sm:w-auto">
             <TabsList className="w-full sm:w-auto grid grid-cols-2 sm:flex">
               <TabsTrigger value="galleries" className="flex-1 sm:flex-none">
-                {t("gallery.galleries")}
+                Galleries
               </TabsTrigger>
               <TabsTrigger value="statistics" className="flex-1 sm:flex-none">
-                {t("gallery.statistics")}
+                Statistics
               </TabsTrigger>
             </TabsList>
           </Tabs>
@@ -49,12 +66,12 @@ export default function GalleriesPage() {
             </div>
             <Button className="bg-[#191A23] text-white hover:bg-black/90" onClick={() => setIsCreateModalOpen(true)}>
               <Plus className="mr-2 h-4 w-4" />
-              {t("gallery.create")}
+              Create Gallery
             </Button>
           </div>
         </div>
 
-        {activeTab === "galleries" ? <GalleryGrid /> : <GalleryStatistics />}
+        {activeTab === "galleries" ? <GalleryGrid key={refreshKey} /> : <GalleryStatistics />}
 
         <CreateGalleryModal
           isOpen={isCreateModalOpen}

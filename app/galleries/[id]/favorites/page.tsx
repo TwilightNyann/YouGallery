@@ -7,15 +7,19 @@ import GallerySidebar from "@/components/gallery-sidebar"
 import PhotoGrid from "@/components/photo-grid"
 import { useLanguage } from "@/contexts/language-context"
 import { useToast } from "@/hooks/use-toast"
+import apiClient from "@/lib/api"
+import { useRouter } from "next/navigation"
 
 export default function GalleryFavoritesPage({ params }: { params: { id: string } }) {
   const [sortBy, setSortBy] = useState("newest")
   const [favoritePhotos, setFavoritePhotos] = useState<any[]>([])
   const { t } = useLanguage()
   const { toast } = useToast()
+  const router = useRouter()
 
   const [galleryName, setGalleryName] = useState("New Gallery")
   const [shootingDate, setShootingDate] = useState("2024-03-05")
+  const [isLoading, setIsLoading] = useState(true)
 
   // Prevent body scrolling
   useEffect(() => {
@@ -25,122 +29,123 @@ export default function GalleryFavoritesPage({ params }: { params: { id: string 
     }
   }, [])
 
-  // Load photos from localStorage
+  // Load gallery data and favorites
   useEffect(() => {
-    const loadFavorites = () => {
-      const storedPhotosByScene = localStorage.getItem(`gallery-${params.id}-photos`)
-      if (storedPhotosByScene) {
-        try {
-          const photosByScene = JSON.parse(storedPhotosByScene)
+    const loadGalleryData = async () => {
+      try {
+        setIsLoading(true)
 
-          // Extract all favorited photos from all scenes
-          const allFavorites: any[] = []
-          Object.keys(photosByScene).forEach((sceneId) => {
-            photosByScene[sceneId].forEach((photo: any) => {
-              if (photo.isFavorite) {
-                allFavorites.push({
-                  ...photo,
-                  sceneId,
-                })
-              }
-            })
-          })
+        // Load gallery details
+        const gallery = await apiClient.getGallery(Number(params.id))
+        setGalleryName(gallery.name)
+        setShootingDate(gallery.shooting_date)
 
-          setFavoritePhotos(allFavorites)
-        } catch (e) {
-          console.error("Failed to parse stored photos", e)
-        }
+        // Load favorites
+        const favorites = await apiClient.getGalleryFavorites(Number(params.id))
+        console.log("Loaded favorites:", favorites)
+        setFavoritePhotos(favorites)
+      } catch (error) {
+        console.error("Error loading gallery data:", error)
+        toast({
+          title: t("gallery.error"),
+          description: t("gallery.errorLoadingData"),
+          variant: "destructive",
+        })
+      } finally {
+        setIsLoading(false)
       }
     }
 
-    loadFavorites()
-
-    // Add event listener to reload favorites when localStorage changes
-    window.addEventListener("storage", loadFavorites)
-    return () => {
-      window.removeEventListener("storage", loadFavorites)
-    }
-  }, [params.id])
-
-  useEffect(() => {
-    const storedName = localStorage.getItem(`gallery-${params.id}-name`)
-    const storedDate = localStorage.getItem(`gallery-${params.id}-date`)
-
-    if (storedName) setGalleryName(storedName)
-    if (storedDate) setShootingDate(storedDate)
-  }, [params.id])
+    loadGalleryData()
+  }, [params.id, t, toast])
 
   const handleGalleryNameChange = (name: string) => {
     setGalleryName(name)
-    localStorage.setItem(`gallery-${params.id}-name`, name)
   }
 
   const handleShootingDateChange = (date: string) => {
     setShootingDate(date)
-    localStorage.setItem(`gallery-${params.id}-date`, date)
   }
 
-  const handleFavoriteToggle = (photoId: number) => {
-    // Get the current photos by scene
-    const storedPhotosByScene = localStorage.getItem(`gallery-${params.id}-photos`)
-    if (storedPhotosByScene) {
-      try {
-        const photosByScene = JSON.parse(storedPhotosByScene)
+  const handleFavoriteToggle = async (photoId: number) => {
+    try {
+      await apiClient.toggleFavorite(photoId)
 
-        // Update the favorite status in all scenes
-        Object.keys(photosByScene).forEach((sceneId) => {
-          photosByScene[sceneId] = photosByScene[sceneId].map((photo: any) =>
-            photo.id === photoId ? { ...photo, isFavorite: !photo.isFavorite } : photo,
-          )
-        })
+      // Update local state
+      setFavoritePhotos((prev) => prev.filter((photo) => photo.id !== photoId))
 
-        // Save back to localStorage
-        localStorage.setItem(`gallery-${params.id}-photos`, JSON.stringify(photosByScene))
-
-        // Update the local state
-        setFavoritePhotos((prev) => prev.filter((photo) => photo.id !== photoId))
-
-        toast({
-          title: t("gallery.photoUpdated"),
-          description: t("gallery.removedFromFavorites"),
-        })
-      } catch (e) {
-        console.error("Failed to update favorites", e)
-      }
+      toast({
+        title: t("gallery.photoUpdated"),
+        description: t("gallery.removedFromFavorites"),
+      })
+    } catch (error) {
+      console.error("Failed to update favorite:", error)
+      toast({
+        title: t("gallery.error"),
+        description: t("gallery.errorUpdatingFavorite"),
+        variant: "destructive",
+      })
     }
   }
 
-  const handleDeletePhoto = (photoId: number) => {
-    // Get the current photos by scene
-    const storedPhotosByScene = localStorage.getItem(`gallery-${params.id}-photos`)
-    if (storedPhotosByScene) {
-      try {
-        const photosByScene = JSON.parse(storedPhotosByScene)
+  const handleDeletePhoto = async (photoId: number) => {
+    try {
+      await apiClient.deletePhoto(photoId)
 
-        // Remove the photo from all scenes
-        Object.keys(photosByScene).forEach((sceneId) => {
-          photosByScene[sceneId] = photosByScene[sceneId].filter((photo: any) => photo.id !== photoId)
-        })
+      // Update local state
+      setFavoritePhotos((prev) => prev.filter((photo) => photo.id !== photoId))
 
-        // Save back to localStorage
-        localStorage.setItem(`gallery-${params.id}-photos`, JSON.stringify(photosByScene))
-
-        // Update the local state
-        setFavoritePhotos((prev) => prev.filter((photo) => photo.id !== photoId))
-
-        toast({
-          title: t("gallery.photoDeleted"),
-          description: t("gallery.photoDeletedDescription"),
-        })
-      } catch (e) {
-        console.error("Failed to delete photo", e)
-      }
+      toast({
+        title: t("gallery.photoDeleted"),
+        description: t("gallery.photoDeletedDescription"),
+      })
+    } catch (error) {
+      console.error("Failed to delete photo:", error)
+      toast({
+        title: t("gallery.error"),
+        description: t("gallery.errorDeletingPhoto"),
+        variant: "destructive",
+      })
     }
   }
 
-  // In a real app, you would fetch the gallery details
-  // const galleryName = localStorage.getItem(`gallery-${params.id}-name`) || "Sample Gallery"
-  // const shootingDate = localStorage.getItem(`gallery-${params.id}-date`) || "2024-05-11"
+  const handleSetAsCover = async (photoId: number) => {
+    try {
+      await apiClient.setGalleryCover(photoId)
+      toast({
+        title: t("gallery.coverUpdated"),
+        description: t("gallery.coverUpdatedDescription"),
+      })
+    } catch (error) {
+      console.error("Failed to set cover photo:", error)
+      toast({
+        title: t("gallery.error"),
+        description: t("gallery.errorSettingCover"),
+        variant: "destructive",
+      })
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col h-screen overflow-hidden">
+        <Navbar />
+        <div className="flex flex-1 overflow-hidden">
+          <GallerySidebar
+            galleryId={params.id}
+            galleryName={galleryName}
+            shootingDate={shootingDate}
+            currentView="favorites"
+            onGalleryNameChange={handleGalleryNameChange}
+            onShootingDateChange={handleShootingDateChange}
+          />
+          <main className="flex-1 overflow-y-auto flex items-center justify-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-gray-900"></div>
+          </main>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
@@ -176,8 +181,11 @@ export default function GalleryFavoritesPage({ params }: { params: { id: string 
               <PhotoGrid
                 photos={favoritePhotos}
                 sortBy={sortBy}
+                showNames={true}
                 onFavoriteToggle={handleFavoriteToggle}
                 onDeletePhoto={handleDeletePhoto}
+                onSetAsCover={handleSetAsCover}
+                galleryId={params.id}
               />
             ) : (
               <div className="text-center py-12 bg-[#F3F3F3] rounded-lg">

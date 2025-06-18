@@ -1,29 +1,33 @@
 import type React from "react"
-import { Inter } from "next/font/google"
+import type { Metadata } from "next"
 import "./globals.css"
-import { LanguageProvider } from "@/contexts/language-context"
+import { Inter } from "next/font/google"
+import { ThemeProvider } from "@/components/theme-provider"
 import { AuthProvider } from "@/contexts/auth-context"
+import { LanguageProvider } from "@/contexts/language-context"
+import { Toaster } from "sonner"
 
 const inter = Inter({ subsets: ["latin"] })
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode
-}>) {
+export const metadata: Metadata = {
+  title: "Photo Gallery",
+  description: "A professional photo gallery application",
+  generator: "v0.dev",
+}
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en">
       <body className={inter.className}>
-        <AuthProvider>
-          <LanguageProvider>{children}</LanguageProvider>
-        </AuthProvider>
+        <ThemeProvider attribute="class" defaultTheme="light">
+          <LanguageProvider>
+            <AuthProvider>
+              {children}
+              <Toaster position="top-center" />
+            </AuthProvider>
+          </LanguageProvider>
+        </ThemeProvider>
       </body>
     </html>
   )
-}
-
-export const metadata = {
-  title: "YouGallery - Your Photo Gallery Platform",
-  description: "Store, organize, and share your photos with YouGallery",
-    generator: 'v0.dev'
 }

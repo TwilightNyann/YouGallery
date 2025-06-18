@@ -1,45 +1,48 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Upload, Type } from "lucide-react"
+import { Upload, Type, X } from "lucide-react"
 import PhotoGrid from "@/components/photo-grid"
 import { useLanguage } from "@/contexts/language-context"
 import { SimpleModal } from "@/components/simple-modal"
 import { useToast } from "@/hooks/use-toast"
-import { format } from "date-fns"
+import apiClient from "@/lib/api"
 
-// Mock data for photos by scene
-const initialMockPhotosByScene = {
-  "1": [
-    { id: 1, url: "/placeholder.svg?height=300&width=400", name: "Photo 1", isFavorite: false },
-    { id: 2, url: "/placeholder.svg?height=300&width=400", name: "Photo 2", isFavorite: true },
-    { id: 3, url: "/placeholder.svg?height=300&width=400", name: "Photo 3", isFavorite: false },
-    { id: 4, url: "/placeholder.svg?height=300&width=400", name: "Photo 4", isFavorite: false },
-  ],
-  "scene-123456": [
-    { id: 5, url: "/placeholder.svg?height=300&width=400", name: "Scene 2 - Photo 1", isFavorite: false },
-    { id: 6, url: "/placeholder.svg?height=300&width=400", name: "Scene 2 - Photo 2", isFavorite: false },
-  ],
+interface Photo {
+  id: number
+  url: string
+  name: string
+  filename: string
+  original_filename: string
+  file_path: string
+  file_size: number
+  mime_type: string
+  order_index: number
+  scene_id: number
+  created_at: string
+  isFavorite?: boolean
+}
+
+interface Scene {
+  id: number
+  name: string
+  order_index: number
+  gallery_id: number
+  photos?: Photo[]
 }
 
 interface GalleryContentProps {
   galleryId: string
   galleryName: string
   shootingDate: string
-  selectedSceneId?: string // Додаємо проп для вибраної сцени
+  selectedSceneId?: string
 }
 
-export default function GalleryContent({
-  galleryId,
-  galleryName,
-  shootingDate,
-  selectedSceneId = "1", // За замовчуванням використовуємо "1"
-}: GalleryContentProps) {
+export default function GalleryContent({ galleryId, galleryName, shootingDate, selectedSceneId }: GalleryContentProps) {
   const { t } = useLanguage()
   const { toast } = useToast()
 
@@ -47,252 +50,273 @@ export default function GalleryContent({
   const [sortBy, setSortBy] = useState("newest")
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
   const [showPhotoNames, setShowPhotoNames] = useState(false)
-  const [photosByScene, setPhotosByScene] = useState(initialMockPhotosByScene)
-  const [scenes, setScenes] = useState<{ id: string; name: string }[]>([])
+  const [scenes, setScenes] = useState<Scene[]>([])
+  const [photos, setPhotos] = useState<Photo[]>([])
   const [selectedSceneName, setSelectedSceneName] = useState<string>("")
-  const [allScenesDeleted, setAllScenesDeleted] = useState(false)
+  const [loading, setLoading] = useState(false)
 
-  // Load scenes and photos from localStorage
+  // Upload state
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+  const [isUploading, setIsUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [uploadedCount, setUploadedCount] = useState(0)
+
+  // Load scenes and photos from API
   useEffect(() => {
-    const storedPhotosByScene = localStorage.getItem(`gallery-${galleryId}-photos`)
-    const storedScenes = localStorage.getItem(`gallery-${galleryId}-scenes`)
-    const allScenesDeletedFlag = localStorage.getItem(`gallery-${galleryId}-all-scenes-deleted`) === "true"
-
-    setAllScenesDeleted(allScenesDeletedFlag)
-
-    if (storedPhotosByScene) {
-      try {
-        setPhotosByScene(JSON.parse(storedPhotosByScene))
-      } catch (e) {
-        console.error("Failed to parse stored photos", e)
-      }
-    } else if (!allScenesDeletedFlag) {
-      // Only use mock data for new galleries, not when all scenes were intentionally deleted
-      localStorage.setItem(`gallery-${galleryId}-photos`, JSON.stringify(initialMockPhotosByScene))
-    } else {
-      // If all scenes were deleted, initialize with empty photos object
-      setPhotosByScene({})
-    }
-
-    if (storedScenes) {
-      try {
-        const parsedScenes = JSON.parse(storedScenes)
-        setScenes(parsedScenes)
-      } catch (e) {
-        console.error("Failed to parse stored scenes", e)
-      }
+    if (galleryId && !isNaN(Number(galleryId))) {
+      loadScenes()
     }
   }, [galleryId])
 
-  // Add an event listener to update scene name when it changes
   useEffect(() => {
-    // Function to handle scene name changes from other components
-    const handleSceneNameChange = (event: CustomEvent) => {
+    if (selectedSceneId && !isNaN(Number(selectedSceneId))) {
+      loadPhotos()
+      const scene = scenes.find((s) => s.id === Number(selectedSceneId))
+      if (scene) {
+        setSelectedSceneName(scene.name)
+      }
+    } else {
+      setSelectedSceneName("")
+      setPhotos([])
+    }
+  }, [selectedSceneId, scenes])
+
+  // Додати useEffect для слухання змін імені сцени:
+  useEffect(() => {
+    const handleSceneNameChanged = (event: CustomEvent) => {
       const { sceneId, newName } = event.detail
-      if (sceneId === selectedSceneId) {
+      if (sceneId.toString() === selectedSceneId) {
         setSelectedSceneName(newName)
       }
     }
 
-    // Add event listener for scene name changes
     if (typeof window !== "undefined") {
-      window.addEventListener("sceneNameChanged", handleSceneNameChange as EventListener)
+      window.addEventListener("sceneNameChanged", handleSceneNameChanged as EventListener)
     }
 
-    // Clean up event listener
     return () => {
       if (typeof window !== "undefined") {
-        window.removeEventListener("sceneNameChanged", handleSceneNameChange as EventListener)
+        window.removeEventListener("sceneNameChanged", handleSceneNameChanged as EventListener)
       }
     }
   }, [selectedSceneId])
 
-  // Improve the scene name loading logic
+  // Додати слухач для оновлення галереї:
   useEffect(() => {
-    if (selectedSceneId) {
-      // Always reload the scenes data from localStorage to ensure we have the latest
-      const storedScenes = localStorage.getItem(`gallery-${galleryId}-scenes`)
-      if (storedScenes) {
-        try {
-          const parsedScenes = JSON.parse(storedScenes)
-          setScenes(parsedScenes)
-
-          // Find the selected scene
-          const scene = parsedScenes.find((s: { id: string; name: string }) => s.id === selectedSceneId)
-          if (scene) {
-            setSelectedSceneName(scene.name)
-          } else {
-            setSelectedSceneName("")
-          }
-        } catch (e) {
-          console.error("Failed to parse stored scenes", e)
-        }
-      } else {
-        // If no scenes are stored yet, set scenes to empty array
-        setScenes([])
-        setSelectedSceneName("")
-      }
-    }
-  }, [selectedSceneId, galleryId])
-
-  // Let's add an event listener for the allScenesDeleted event
-
-  // Update the useEffect to handle the case when all scenes are deleted
-  useEffect(() => {
-    // Function to handle when all scenes are deleted
-    const handleAllScenesDeleted = (event: CustomEvent) => {
-      const { galleryId: eventGalleryId } = event.detail
-      if (eventGalleryId === galleryId) {
-        // Update our local scenes state to empty
-        setScenes([])
-        setSelectedSceneName("")
-        setAllScenesDeleted(true)
+    const handleGalleryUpdated = (event: CustomEvent) => {
+      const { galleryId: updatedGalleryId, name, shooting_date } = event.detail
+      if (updatedGalleryId === galleryId) {
+        // Галерея оновлена, але ми не показуємо дату тут
       }
     }
 
-    // Add event listener for all scenes deleted
     if (typeof window !== "undefined") {
-      window.addEventListener("allScenesDeleted", handleAllScenesDeleted as EventListener)
+      window.addEventListener("galleryUpdated", handleGalleryUpdated as EventListener)
     }
 
-    // Clean up event listener
     return () => {
       if (typeof window !== "undefined") {
-        window.removeEventListener("allScenesDeleted", handleAllScenesDeleted as EventListener)
+        window.removeEventListener("galleryUpdated", handleGalleryUpdated as EventListener)
       }
     }
   }, [galleryId])
 
-  // Add a listener for the scenesAvailable event to reset the allScenesDeleted state
-  useEffect(() => {
-    // Function to handle when scenes become available again
-    const handleScenesAvailable = (event: CustomEvent) => {
-      const { galleryId: eventGalleryId } = event.detail
-      if (eventGalleryId === galleryId) {
-        setAllScenesDeleted(false)
+  const loadScenes = async () => {
+    try {
+      setLoading(true)
+      const galleryIdNum = Number(galleryId)
+      if (isNaN(galleryIdNum)) {
+        throw new Error("Invalid gallery ID")
       }
+      const scenesData = await apiClient.getScenes(galleryIdNum)
+      setScenes(scenesData)
+    } catch (error) {
+      console.error("Error loading scenes:", error)
+      toast({
+        title: "Error",
+        description: "Failed to load scenes",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const loadPhotos = async () => {
+    if (!selectedSceneId) return
+
+    const sceneIdNum = Number(selectedSceneId)
+    if (isNaN(sceneIdNum)) {
+      console.error("Invalid scene ID:", selectedSceneId)
+      return
     }
 
-    // Add event listener for scenes available
-    if (typeof window !== "undefined") {
-      window.addEventListener("scenesAvailable", handleScenesAvailable as EventListener)
+    try {
+      setLoading(true)
+      const photosData = await apiClient.getPhotos(sceneIdNum)
+      setPhotos(photosData)
+    } catch (error) {
+      console.error("Error loading photos:", error)
+      toast({
+        title: "Error",
+        description: "Failed to load photos",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
     }
-
-    // Clean up event listener
-    return () => {
-      if (typeof window !== "undefined") {
-        window.removeEventListener("scenesAvailable", handleScenesAvailable as EventListener)
-      }
-    }
-  }, [galleryId])
+  }
 
   const handleSave = () => {
     setIsEditing(false)
-    // Save changes to backend
   }
 
   const handleUpload = () => {
-    // Open upload modal for the selected scene
     setIsUploadModalOpen(true)
+    setSelectedFiles([])
+    setUploadProgress(0)
+    setUploadedCount(0)
   }
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Handle file upload logic here
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (files && files.length > 0) {
-      console.log(`Uploading ${files.length} files to scene ${selectedSceneId}`)
-      // In a real app, you would upload these files to your backend
+      setSelectedFiles(Array.from(files))
+    }
+    e.target.value = ""
+  }
 
-      // Mock adding new photos
-      const newPhotos = Array.from(files).map((file, index) => ({
-        id: Date.now() + index,
-        url: "/placeholder.svg?height=300&width=400", // In a real app, this would be the uploaded file URL
-        name: file.name,
-        isFavorite: false,
-      }))
+  const handleRemoveFile = (index: number) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index))
+  }
 
-      const updatedPhotosByScene = {
-        ...photosByScene,
-        [selectedSceneId]: [...(photosByScene[selectedSceneId] || []), ...newPhotos],
-      }
+  const handleStartUpload = async () => {
+    if (selectedFiles.length === 0 || !selectedSceneId) return
 
-      setPhotosByScene(updatedPhotosByScene)
-
-      // Зберігаємо оновлені фото в localStorage
-      localStorage.setItem(`gallery-${galleryId}-photos`, JSON.stringify(updatedPhotosByScene))
-
+    const sceneIdNum = Number(selectedSceneId)
+    if (isNaN(sceneIdNum)) {
       toast({
-        title: t("gallery.uploadSuccess"),
-        description: `${files.length} ${t("gallery.photosUploaded")}`,
+        title: "Error",
+        description: "Invalid scene selected",
+        variant: "destructive",
       })
+      return
     }
 
-    // Close the modal after upload
-    setIsUploadModalOpen(false)
+    setIsUploading(true)
+    setUploadProgress(0)
+    setUploadedCount(0)
+
+    try {
+      const uploadedPhotos: Photo[] = []
+
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const file = selectedFiles[i]
+
+        // Update progress
+        setUploadProgress(Math.round(((i + 1) / selectedFiles.length) * 100))
+        setUploadedCount(i + 1)
+
+        try {
+          // Upload file to API
+          const uploadedPhoto = await apiClient.uploadPhoto(sceneIdNum, file)
+          uploadedPhotos.push(uploadedPhoto)
+        } catch (error) {
+          console.error(`Error uploading file ${file.name}:`, error)
+          toast({
+            title: "Upload Error",
+            description: `Failed to upload ${file.name}`,
+            variant: "destructive",
+          })
+        }
+      }
+
+      // Reload photos to get updated list
+      await loadPhotos()
+
+      toast({
+        title: "Upload Complete",
+        description: `${uploadedPhotos.length} photos uploaded successfully`,
+      })
+
+      // Close modal and reset state
+      setIsUploadModalOpen(false)
+      setSelectedFiles([])
+      setIsUploading(false)
+      setUploadProgress(0)
+      setUploadedCount(0)
+    } catch (error) {
+      console.error("Error uploading files:", error)
+      toast({
+        title: "Upload Error",
+        description: "Failed to upload photos",
+        variant: "destructive",
+      })
+      setIsUploading(false)
+    }
   }
 
   const togglePhotoNames = () => {
     setShowPhotoNames(!showPhotoNames)
   }
 
-  const handleFavoriteToggle = (photoId: number) => {
-    const updatedPhotosByScene = { ...photosByScene }
-
-    // Find the scene that contains this photo
-    Object.keys(updatedPhotosByScene).forEach((sceneId) => {
-      updatedPhotosByScene[sceneId] = updatedPhotosByScene[sceneId].map((photo) =>
-        photo.id === photoId ? { ...photo, isFavorite: !photo.isFavorite } : photo,
-      )
-    })
-
-    setPhotosByScene(updatedPhotosByScene)
-
-    // Зберігаємо оновлені фото в localStorage
-    localStorage.setItem(`gallery-${galleryId}-photos`, JSON.stringify(updatedPhotosByScene))
-
-    toast({
-      title: t("gallery.photoUpdated"),
-      description: t("gallery.favoriteStatusChanged"),
-    })
+  const handleDeletePhoto = async (photoId: number) => {
+    try {
+      await apiClient.deletePhoto(photoId)
+      await loadPhotos() // Reload photos
+      toast({
+        title: "Photo Deleted",
+        description: "Photo has been deleted successfully",
+      })
+    } catch (error) {
+      console.error("Error deleting photo:", error)
+      toast({
+        title: "Error",
+        description: "Failed to delete photo",
+        variant: "destructive",
+      })
+    }
   }
 
-  const handleDeletePhoto = (photoId: number) => {
-    const updatedPhotosByScene = { ...photosByScene }
+  const handleSetAsCover = async (photoId: number) => {
+    try {
+      // Call API to set photo as gallery cover
+      await apiClient.setGalleryCover(photoId)
+      toast({
+        title: "Cover Set",
+        description: "Photo has been set as gallery cover",
+      })
 
-    // Find the scene that contains this photo and remove it
-    Object.keys(updatedPhotosByScene).forEach((sceneId) => {
-      updatedPhotosByScene[sceneId] = updatedPhotosByScene[sceneId].filter((photo) => photo.id !== photoId)
-    })
-
-    setPhotosByScene(updatedPhotosByScene)
-
-    // Зберігаємо оновлені фото в localStorage
-    localStorage.setItem(`gallery-${galleryId}-photos`, JSON.stringify(updatedPhotosByScene))
-
-    toast({
-      title: t("gallery.photoDeleted"),
-      description: t("gallery.photoDeletedDescription"),
-    })
+      // Dispatch event to notify other components
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("coverPhotoUpdated", {
+            detail: { galleryId, photoId },
+          }),
+        )
+      }
+    } catch (error) {
+      console.error("Error setting cover:", error)
+      toast({
+        title: "Error",
+        description: "Failed to set photo as cover",
+        variant: "destructive",
+      })
+    }
   }
 
-  const handleSetAsCover = (photoId: number) => {
-    // Store the cover photo ID in localStorage
-    localStorage.setItem(`gallery-${galleryId}-cover`, photoId.toString())
+  // Check if we have a valid scene selected
+  const hasValidScene = selectedSceneId && !isNaN(Number(selectedSceneId))
 
-    toast({
-      title: t("gallery.coverUpdated"),
-      description: t("gallery.coverUpdatedDescription"),
-    })
+  if (loading && scenes.length === 0) {
+    return (
+      <div className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto">
+        <div className="text-center py-12">
+          <p>Loading...</p>
+        </div>
+      </div>
+    )
   }
-
-  // Get photos for the selected scene
-  const currentScenePhotos = photosByScene[selectedSceneId] || []
-
-  // Для відстеження стану
-  useEffect(() => {
-    console.log("GalleryContent - Selected Scene ID:", selectedSceneId)
-    console.log("GalleryContent - Current Scene Photos:", currentScenePhotos)
-  }, [selectedSceneId, currentScenePhotos])
 
   return (
     <div className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto">
@@ -300,10 +324,10 @@ export default function GalleryContent({
         <div className="flex-1 w-full">
           {isEditing ? (
             <div className="space-y-4">
-              <Input value={galleryName} className="text-xl sm:text-2xl font-bold" readOnly />
-              <Input type="date" value={shootingDate} readOnly />
+              <Input value={galleryName || ""} className="text-xl sm:text-2xl font-bold" readOnly />
+              <Input type="date" value={shootingDate || ""} readOnly />
               <Button onClick={handleSave} className="bg-[#B9FF66] text-black hover:bg-[#a8eb55]">
-                {t("gallery.save")}
+                Save
               </Button>
             </div>
           ) : (
@@ -311,28 +335,24 @@ export default function GalleryContent({
               {scenes.length > 0 && (
                 <>
                   <h1 className="text-xl sm:text-2xl font-bold mb-1 sm:mb-2">
-                    {selectedSceneId && selectedSceneName ? selectedSceneName : galleryName}
+                    {hasValidScene && selectedSceneName ? selectedSceneName : galleryName}
                   </h1>
-                  {(!selectedSceneId || !selectedSceneName) && (
-                    <p className="text-sm text-gray-500">{format(new Date(shootingDate), "MMMM d, yyyy")}</p>
-                  )}
                 </>
               )}
             </div>
           )}
         </div>
 
-        {/* Only show controls when scenes exist */}
-        {scenes.length > 0 && (
+        {scenes.length > 0 && hasValidScene && (
           <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
             <Select value={sortBy} onValueChange={setSortBy}>
               <SelectTrigger className="w-full sm:w-[180px]">
-                <SelectValue placeholder={t("gallery.sortBy")} />
+                <SelectValue placeholder="Sort by" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="newest">{t("gallery.newest")}</SelectItem>
-                <SelectItem value="oldest">{t("gallery.oldest")}</SelectItem>
-                <SelectItem value="name">{t("gallery.name")}</SelectItem>
+                <SelectItem value="newest">Newest</SelectItem>
+                <SelectItem value="oldest">Oldest</SelectItem>
+                <SelectItem value="name">Name</SelectItem>
               </SelectContent>
             </Select>
 
@@ -348,71 +368,142 @@ export default function GalleryContent({
 
               <Button className="bg-black text-white hover:bg-black/90" onClick={handleUpload}>
                 <Upload className="mr-2 h-4 w-4" />
-                <span className="hidden sm:inline">{t("gallery.upload")}</span>
-                <span className="sm:hidden">{t("gallery.upload")}</span>
+                <span className="hidden sm:inline">Upload</span>
+                <span className="sm:hidden">Upload</span>
               </Button>
             </div>
           </div>
         )}
       </div>
 
-      {currentScenePhotos.length > 0 ? (
+      {photos.length > 0 ? (
         <PhotoGrid
-          photos={currentScenePhotos}
+          photos={photos}
           sortBy={sortBy}
           showNames={showPhotoNames}
-          onFavoriteToggle={handleFavoriteToggle}
           onDeletePhoto={handleDeletePhoto}
           onSetAsCover={handleSetAsCover}
           galleryId={galleryId}
         />
-      ) : scenes.length === 0 || !selectedSceneId ? (
+      ) : scenes.length === 0 ? (
         <div className="text-center py-12 bg-[#F3F3F3] rounded-lg">
-          <h3 className="text-lg font-medium mb-2">{t("gallery.noScenes")}</h3>
-          <p className="text-gray-500">{t("gallery.noScenesDescription")}</p>
+          <h3 className="text-lg font-medium mb-2">No scenes available</h3>
+          <p className="text-gray-500">Create scenes to organize your photos</p>
+        </div>
+      ) : !hasValidScene ? (
+        <div className="text-center py-12 bg-[#F3F3F3] rounded-lg">
+          <h3 className="text-lg font-medium mb-2">Select a scene</h3>
+          <p className="text-gray-500">Choose a scene from the sidebar to view photos</p>
         </div>
       ) : (
         <div className="text-center py-12 bg-[#F3F3F3] rounded-lg">
           <Upload className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-          <h3 className="text-lg font-medium mb-2">{t("gallery.noPhotos")}</h3>
-          <p className="text-gray-500">{t("gallery.noPhotosDescription")}</p>
+          <h3 className="text-lg font-medium mb-2">No photos in this scene</h3>
+          <p className="text-gray-500">Upload photos to get started</p>
         </div>
       )}
 
-      {/* Upload Photos Modal */}
-      <SimpleModal
-        isOpen={isUploadModalOpen}
-        onClose={() => setIsUploadModalOpen(false)}
-        title={t("gallery.uploadPhotos")}
-      >
+      <SimpleModal isOpen={isUploadModalOpen} onClose={() => setIsUploadModalOpen(false)} title="Upload Photos">
         <div className="space-y-4">
-          <p className="text-sm text-gray-600">{t("gallery.uploadPhotosToScene")}</p>
+          <p className="text-sm text-gray-600">Upload photos to the selected scene</p>
 
+          {/* File Selection */}
           <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-gray-300 rounded-lg">
             <Upload className="h-10 w-10 text-gray-400 mb-2" />
-            <p className="text-sm text-gray-500 mb-2">{t("gallery.dragAndDrop")}</p>
+            <p className="text-sm text-gray-500 mb-2">Drag and drop files here or click to browse</p>
             <input
               type="file"
               id="file-upload"
               multiple
               accept="image/*"
               className="hidden"
-              onChange={handleFileUpload}
+              onChange={handleFileSelect}
             />
             <label htmlFor="file-upload">
               <Button
                 className="bg-[#B9FF66] text-black hover:bg-[#a8eb55]"
                 onClick={() => document.getElementById("file-upload")?.click()}
               >
-                {t("gallery.browseFiles")}
+                Browse Files
               </Button>
             </label>
           </div>
 
-          <div className="flex justify-end">
-            <Button variant="outline" onClick={() => setIsUploadModalOpen(false)}>
-              {t("gallery.cancel")}
+          {/* Selected Files Preview */}
+          {selectedFiles.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <h4 className="font-medium">Selected Files ({selectedFiles.length})</h4>
+                <Button variant="ghost" size="sm" onClick={() => setSelectedFiles([])} className="text-gray-500">
+                  Clear All
+                </Button>
+              </div>
+
+              <div className="max-h-40 overflow-y-auto space-y-2">
+                {selectedFiles.map((file, index) => (
+                  <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-gray-200 rounded overflow-hidden">
+                        <img
+                          src={URL.createObjectURL(file) || "/placeholder.svg"}
+                          alt={file.name}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium truncate max-w-48">{file.name}</p>
+                        <p className="text-xs text-gray-500">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleRemoveFile(index)}
+                      className="text-red-500 hover:text-red-700"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Upload Progress */}
+          {isUploading && (
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span>Uploading photos...</span>
+                <span>
+                  {uploadedCount} of {selectedFiles.length}
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div
+                  className="bg-[#B9FF66] h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+              <p className="text-xs text-gray-500 text-center">{uploadProgress}% complete</p>
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="flex justify-end space-x-2">
+            <Button variant="outline" onClick={() => setIsUploadModalOpen(false)} disabled={isUploading}>
+              Cancel
             </Button>
+            {selectedFiles.length > 0 && (
+              <Button
+                onClick={handleStartUpload}
+                disabled={isUploading}
+                className="bg-[#B9FF66] text-black hover:bg-[#a8eb55]"
+              >
+                {isUploading
+                  ? "Uploading..."
+                  : `Upload ${selectedFiles.length} ${selectedFiles.length === 1 ? "Photo" : "Photos"}`}
+              </Button>
+            )}
           </div>
         </div>
       </SimpleModal>
